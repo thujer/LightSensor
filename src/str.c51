@@ -1,0 +1,43 @@
+
+// +------------------------------------------------------------+ //
+// |                         String utils                       | //
+// +------------------------------------------------------------+ //
+
+
+#define uchar unsigned char
+#define uint  unsigned int
+
+
+// Prevede znak na velky
+uchar up_char(uchar ch)
+{
+  if((ch>='a') && (ch<='z')) return(ch & (255-32));
+  else return(ch);
+}
+
+
+// Vynuluje buffer na ukazateli
+void reset_buffer(uchar *buf, uint bytes)
+{
+  uchar i;
+  for(i=0; i < bytes; i++) buf[i]=0;
+}
+
+
+// Je-li znak cislice vrati 1
+uchar is_num(uchar Char)
+{
+  if((Char >= '0') && (Char <= '9')) return(1); else return(0);
+}
+
+
+// Je-li byte hex cislo, vraci 1
+/*
+bit is_hex(char byte)
+{
+    if(((up_char(byte) >= 'A') && (up_char(byte) <='F')) || ((byte >= '0') && (byte <= '9')))
+        return(1);
+    else
+        return(0);        
+}
+*/

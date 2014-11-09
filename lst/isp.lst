@@ -1,0 +1,109 @@
+C51 COMPILER V8.05a   ISP                                                                  11/16/2007 01:49:01 PAGE 1   
+
+
+C51 COMPILER V8.05a, COMPILATION OF MODULE ISP
+OBJECT MODULE PLACED IN .\obj\isp.obj
+COMPILER INVOKED BY: H:\PrgJaz\Keil\C51\BIN\C51.EXE src\isp.c51 OMF2 BROWSE MODP2 INCDIR(.\src) DEBUG PRINT(.\lst\isp.ls
+                    -t) OBJECT(.\obj\isp.obj)
+
+line level    source
+
+   1          
+   2          #define UART_SUPPORT
+   3          
+   4          #include <reg922.h>
+   5          #include <stdio.h>
+   6          #include "iap.h"                   // In Application Programming
+   7          #include "stdout.h"
+   8          #include "uart.h"
+   9          #include "pin.h"
+  10          
+  11          // ------------------------------------------------------------------------------------------------
+  12          
+  13          #define ISP_RECOVERY_LOOPS 30000
+  14          
+  15          sbit PIN_ISP_RECOVERY = P1^2;
+  16          
+  17          unsigned int isp_loop;
+  18          
+  19          
+  20          // ------------------------------------------------------------------------------------------------
+  21          
+  22          void isp_recovery()
+  23          {
+  24   1          EA=0;                              // Disable all interrupts
+  25   1      
+  26   1          IAP_reset_boot_status();            
+  27   1          IAP_reset_boot_vector();
+  28   1      
+  29   1          uart_init();
+  30   1      
+  31   1          //while(~printf_ready);
+  32   1          //printf("\r\nISP mode accessed now.\r\n");
+  33   1          printf(".");
+  34   1          //printf_ready = 1;
+  35   1      
+  36   1          while(1);
+  37   1      }
+  38          
+  39          
+  40          void isp_security_check()
+  41          {
+  42   1          char test_loop;
+  43   1          char probability;
+  44   1      
+  45   1          if(~PIN_ISP_RECOVERY)                         // pokud je pin nulovany
+  46   1          {
+  47   2              test_loop   = 100;                        // nastav pocet testovacich cyklu
+  48   2              probability = 0;                          // nuluj pravdepodobnost
+  49   2              while(test_loop)                          // smycka testu pravdepodobnosti nulovani pinu
+  50   2              {
+  51   3                  test_loop--;                          // odecti cykl
+  52   3      
+  53   3                  if(~PIN_ISP_RECOVERY)                 // pokud je pin v tuto chvili nulovany
+  54   3                      probability++;                    // pripocti pravdepodobnost
+C51 COMPILER V8.05a   ISP                                                                  11/16/2007 01:49:01 PAGE 2   
+
+  55   3              }        
+  56   2      
+  57   2              if(probability > 90)                      // pokud je pravdepodobnost vetsi nez 90%
+  58   2                  isp_recovery();                       // obnov ISP mod
+  59   2          }
+  60   1      }
+  61          
+  62          
+  63          void isp_security_loop()
+  64          {
+  65   1          //P1M1 |= 128;             // set open drains on P1.7 pin
+  66   1          //P1M2 &= (255-128);       // set P1.7 as input only
+  67   1          pin_set(PORT_ID_P1, 2, PIN_TYPE_INPUT_ONLY);
+  68   1      
+  69   1          isp_loop = ISP_RECOVERY_LOOPS;        // wait in loop for n cycles
+  70   1         
+  71   1          while(isp_loop)
+  72   1          {
+  73   2              isp_security_check();
+  74   2              isp_loop--;
+  75   2          }
+  76   1      }
+  77          
+  78          
+  79          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =     88    ----
+   CONSTANT SIZE    =      2    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      2    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

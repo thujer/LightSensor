@@ -1,0 +1,426 @@
+//-------------------------------------------------------------------------//
+/////////////////////////////////////////////////////////////////////////////
+// +---------------------------------------------------------------------+ //
+// |                      Detekce prikazu a parametru                    | //
+// |                     ------------------------------                  | //
+// |                       Verze 1.04Tiny Build 071111                   | //
+// |                                                                     | //
+// |                         Copyright Tomas Hujer                       | //
+// |                             (c) 2005-2007                           | //
+// |                      thomas.hoodger(at)gmail.com                    | //
+// |                                                                     | //
+// +---------------------------------------------------------------------+ //
+// |  Detekuje sekvencni prikazy podle tabulky prikazu v parametru       | //
+// |  cmd_detect(*cmd_tab, get_char). cmd_tab je pointer na tab.         | //
+// |  get_char je promenna kde se sekvencne objevuje testovany znak.     | //
+// |  Funkce prochazi tabulkou prikazu a prohledava nody, u kazdeho      | //
+// |  prikazu je udan index nasledujiciho nodu. Jsou prohledavany        | //
+// |  vsechny nasledne nody, dokud neni nalezen nod se stejnym indexem,  | //
+// |  jako ma aktualni znak v prikazu. Pokud je nalezen oddelovaci znak  | //
+// |  (separator) je prikaz kompletni a je vracena hodnota uvedena       | //
+// |  prislusnem nodu.                                                   | //
+// |  Tato verze byla vyvinuta pro minimalni naroky na pamet a mnozstvi  | //
+// |  kodu.                                                              | //
+// +---------------------------------------------------------------------+ //
+//                                                                         //
+//   Version history:                                                      //
+//    1.01    070823   Prvni evolution verze                               //
+//                                                                         //
+//    1.02    071110   Pridana validace tabulky prikazu                    //
+//                                                                         //
+//    1.03    071111   Opravena chyba v detekci 1. prikazu                 //
+//                                                                         //
+//    1.04    071115   Opravena chyba v nacitani 2. a dalsich parametru    //
+//                                                                         //
+//  ---------------------------------------------------------------------  //
+//    TODO: upravit na vice instanci, detekce bude probihat v ruznych      //
+//          casovych rovinach, nektere z nich se nesynchronne prolinaji    //
+//                                                                         //
+//          1. detekce prikazu na HW serialu - prikazy modemu              //
+//                                                                         //
+//          2. detekce prikazu v dekodovanem PDU textu, bezi virtualne,    //
+//             cca 0.87x pomaleji nez detekce na HW serialu,               //
+//             volana pri kazdem dekodovanem znaku PDU textu,              //
+//                                                                         //
+//          3. detekce prikazu na SCOM, synchronni komunikaci, bezi        //
+//             nezavisle na HW serialu, predpoklada se nekolikanasobna     //
+//             rychlost oproti serialu.
+//                                                                         //
+//                                                                         //
+/////////////////////////////////////////////////////////////////////////////
+//-------------------------------------------------------------------------//
+
+
+#define uchar unsigned char
+#define uint unsigned int
+
+#include <reg922.h>
+#include <stdio.h>
+#include "str.h"
+
+
+int  cmd_offset;        // index zacatku aktualniho prikazu
+int  cmd_ix;            // index v prikazu (pozice od offsetu)
+
+bit  cmd_save_par_flag; // parameter saving flag
+bit  cmd_space_skip;    // skip spaces in parameter flag
+bit  cmd_new_command;   // new command will be coming
+
+char cmd_par_buf[10];   // parameter buffer
+char cmd_par_buf_ix;    // parameter index
+char cmd_par_buf_cnt;   // paramaters count 
+
+//----------------------------------------------------------------------------------
+
+
+
+
+
+// Vrati ukazatel na n-ty parametr
+uchar *cmd_getpar(uchar index)
+{
+  uchar i;
+  uchar ct;
+  
+  i=1;                                                               // Nastav index prvniho paramatru
+  ct=0;                                                              // Nuluj citac parametru
+  while(ct!=index)                                                   // Citej parametry dokud neni cislo parametru stejne jako index
+  {
+    if(ct == index) break;                                           // Pokud je cislo parametru stejne jako index, parametr nalezen, konci
+    if(!cmd_par_buf[i]) ct++;                                        // Pokud je nalezena #0, pokracuj s dalsim parametrem
+    i++;                                                             // Inc index v bufferu
+
+    //if(i > cmd_par_buf_ix) break;                                    // pokud konec parametru, prerus
+  }
+  return(cmd_par_buf + i);                                           // Vrat skutecnou adresu parametru
+}
+
+
+
+// Vrati cislo zkonvertovane z n-teho parametru
+uint cmd_getparnum(uchar index, uchar omez)
+{
+    uchar Num[5];
+    uchar IxNum,IxPar;
+    uint  DestInt;
+    uint  Nasob;
+    uchar Ch;
+    
+    for(IxNum=0; IxNum<5; IxNum++) Num[IxNum]=0;       // Nuluj buffer
+    
+    // Nacti cislice do bufferu
+    IxNum=0;
+    IxPar=0;
+    
+    while(IxNum < 5)                                   // 5 cislic (Dec Int)
+    {
+        if(Ch = cmd_getpar(index)[IxPar])
+        {
+            if(!is_num(Ch))
+            {
+                IxPar++;
+            }
+            else
+            {
+                Num[IxNum]=Ch; IxNum++; IxPar++;
+            }
+        }
+        else
+            break;    
+    }
+
+    // IxNum...PocetCislic
+    if((omez) && (omez < IxNum)) IxNum = omez;  // Omezeni poctu cislic
+
+    // Vypocitej integer ze znaku v parametru
+    Nasob=1;                          // Nastav pocatecniho nasobitele
+    DestInt=0;                        // Nuluj vysledne cislo
+    while(IxNum)
+    {
+        DestInt+= (Num[IxNum-1]-'0') * Nasob; // pocitej
+        Nasob *= 10;
+        IxNum--;
+    }
+
+    return(DestInt);
+}
+
+
+// Vrati pocet parametru
+/*
+char cmd_par_count()
+{
+    return(cmd_par_buf_ix);
+}
+*/
+
+
+
+// Porovnava znak v get_char se znaky v tabulce cmd_tab
+uchar cmd_detect(char *cmd_tab, uchar get_char)
+{
+    uchar out;
+    uchar curr_char;
+    int   node_ix;
+
+    #define SEPARATOR    '@'
+    #define CURR_CHAR    cmd_tab[cmd_ix + cmd_offset + 4 - NODE_IX]
+
+    // Node index
+    #define NODE_IX      cmd_tab[cmd_offset + 1]
+
+    // Next node index
+    #define NEXT_NODE    cmd_tab[cmd_offset + 2]
+
+    // Node value
+    #define NODE_VALUE   cmd_tab[cmd_offset + 3]
+    
+
+    if(cmd_save_par_flag)                                          // pokud je aktivni ukladani parametru
+    {
+        switch(get_char)
+        {
+            case '/':                                              // Znaky pro dalsi parametr
+            case '.':
+            case ':':
+            case ',':
+            case ' ':
+                if(cmd_par_buf_ix < sizeof(cmd_par_buf))           // pokud je v bufferu misto
+                {
+                    if(~cmd_space_skip) 
+                    {
+                        cmd_par_buf[cmd_par_buf_ix] = 0;           // zapis konec aktualniho parametru
+                        cmd_par_buf_ix++;                          // posun index
+                        cmd_par_buf_cnt++;                         // inc par count
+                    }
+
+                    if(get_char == ' ')  
+                        cmd_space_skip = 1;                        // aktivace vynechani mezer
+                    else
+                        cmd_space_skip = 0;                        // deaktivace vynechani mezer
+                }
+                break;                                 
+
+            case ';':                                              // Konec ukladani parametru
+            case '@':
+            case '*':
+            case '#':
+            case  10:
+            case  13:   
+                if(cmd_par_buf_ix < sizeof(cmd_par_buf))           // pokud je v bufferu misto
+                {
+                    cmd_par_buf[cmd_par_buf_ix] = 0;               // zapis konec aktualniho parametru
+                }
+
+                cmd_par_buf[sizeof(cmd_par_buf) - 1] = 0;
+
+                cmd_save_par_flag = 0;                             // deaktivace modu zachytavani parametru
+
+                out = NODE_VALUE;                                  // set output value
+                cmd_offset = 0;                                    // reset command offset
+                
+                // pozn. zde neresetovat index parametru, 
+                // bud nastavit priznak a resetovat pozdeji nebo zkopirovat                                          
+                // cmd_par_buf_ix = 0;                                // reset command index
+                cmd_new_command = 1;
+
+                return(out);
+                break;
+
+            case 8:                                                // backspace
+                if(cmd_par_buf_ix)
+                {
+                    cmd_par_buf_ix--;
+                    cmd_par_buf[cmd_par_buf_ix] = 0;
+                }
+                break;
+
+            case '"': break;                                         // Uvozovky nezapisovat
+
+            default: 
+                if(cmd_par_buf_ix < sizeof(cmd_par_buf))             // pokud je v bufferu misto
+                {
+                    cmd_par_buf[cmd_par_buf_ix] = get_char;          // zapis aktualni znak
+                    cmd_par_buf_ix++; 
+                }
+                else
+                {
+                    cmd_par_buf[sizeof(cmd_par_buf) - 1] = 0;
+                }
+
+                cmd_space_skip = 0;                                  // deaktivuj flag vynechani mezer
+                break;
+        }
+    }
+    else
+    {
+        COMPARE:
+
+        if(cmd_new_command)                   // if new command expected
+        {
+            cmd_new_command = 0;              // reset flag of new command
+            cmd_par_buf_ix = 0;               // reset parameter index
+        }
+
+        get_char = up_char(get_char);         // convert char to UpCase
+    
+        curr_char = CURR_CHAR;                // get current char
+        if(curr_char == SEPARATOR)
+        {
+            // Pokud nalezen separator, pricti a aktualnimu offsetu aktualni index
+            cmd_offset += cmd_ix;
+        }
+    
+        curr_char = CURR_CHAR;                // get current char
+        if(curr_char == get_char)          
+        {
+            // pokud jsou znaky shodne
+    
+            CHAR_OK:
+            //printf("CMD %c == %c\r\n", CURR_CHAR, get_char);
+    
+            cmd_ix++;                                 // posun lokalni index v prikazu
+    
+            curr_char = CURR_CHAR;                    // get current char
+            if(curr_char == '@')                      // test konce prikazu
+            {                              
+                // Prikaz je kompletni, aktivuj ukladani parametru
+
+                reset_buffer(cmd_par_buf, sizeof(cmd_par_buf));       // clear buffer
+                cmd_par_buf_cnt = 0;
+                cmd_par_buf_ix  = 0;                                  // start offset
+
+                cmd_save_par_flag = 1;
+                cmd_space_skip = 0;
+
+                return(0);
+            }
+        }
+        else
+        {
+            // pokud nejsou znaky shodne, nacti dalsi nod, porovnej lokalni index,
+            // pokud je lokalni index > index nodu, prikaz s timto znakem neexistuje, restartuj detekci
+            // pokud je lokalni index < index nodu, hledej dalsi nod
+            // pokud jsou indexy shodne, nastav hodnotu offsetu nodu jako aktualni a opakuj detekci
+    
+            //printf("CMD %c != %c\r\n", CURR_CHAR, get_char);
+    
+            FIND_NEXT_NODE:
+    
+            if(NEXT_NODE)
+            {
+                cmd_offset += NEXT_NODE;
+                //printf("nextnode:%i\r\n", (int) cmd_offset);
+        
+                if(cmd_ix < NODE_IX)                      
+                {
+                    // novy uzel ma mensi index, pokracuj v hledani dalsiho uzle
+                    //printf("cmd_ix[%i] < NODE_IX[%i], find next node\r\n", (int) cmd_ix, (int) NODE_IX);
+        
+                    goto FIND_NEXT_NODE;
+                }
+        
+                node_ix = NODE_IX;
+                if(cmd_ix > node_ix)                      
+                {
+                    // novy uzel ma vetsi index, tedy nebyl nalezen shodny index
+                    // ukonci hledani, spust znovu test shodnosti od nuloveho indexu s aktualnim znakem
+                    //printf("cmd_ix[%i] > NODE_IX[%i], reset\r\n", (int) cmd_ix, (int) NODE_IX);
+        
+                    cmd_ix = 0;
+                    cmd_offset = 0;
+        
+                    goto COMPARE;
+
+                    // POZN: zde neukoncovat funkci (testovano)
+                }
+        
+                
+                node_ix = NODE_IX;
+                if(cmd_ix == node_ix)                      
+                {
+                    // pokracuj v testu shodnosti
+                    //printf("Next node: ix=%i, ofs=%i, val=%i\r\n", cmd_ix, cmd_offset, (int) NODE_VALUE);
+        
+                    curr_char = CURR_CHAR;                    // get current char
+                    if(curr_char == get_char)
+                        goto CHAR_OK;
+                    else
+                        goto FIND_NEXT_NODE;
+                }
+            }
+            else
+            {
+                //printf("Not next node, reset\r\n");
+    
+                cmd_ix = 0;
+                cmd_offset = 0;
+    
+                //goto COMPARE;
+            }
+        }
+    }
+    return(0);
+}
+
+
+/*
+// Je-li znak cislo, pismeno, nebo znamenko vrati 1
+uchar IsPrint(uchar Char)
+{
+  if(((Char >= 'A') && (Char <= 'Z')) ||
+     ((Char >= 'a') && (Char <= 'z')) ||
+     ((Char >= '0') && (Char <= '9')) ||
+     (Char=='+') || (Char=='-') || (Char=='#'))
+     return(1);
+  else return(0);
+}
+*/
+
+
+bit cmd_validate_test(char *cmd_tab, int cmd_tab_size)
+{
+    char cmd_offs;
+
+    #define SEPARATOR    '@'
+
+    // Node start
+    #define TEST_NODE_ID      cmd_tab[cmd_offs]
+
+    // Node index
+    #define TEST_NODE_IX      cmd_tab[cmd_offs + 1]
+
+    // Next node index
+    #define TEST_NEXT_NODE    cmd_tab[cmd_offs + 2]
+
+   
+    cmd_offs = 0;
+
+    while(1)
+    {
+        if(TEST_NODE_ID != SEPARATOR)           // pokud nesedi ID zacatku noveho prikazu
+            return(0);
+
+        if((!TEST_NODE_IX) && (!TEST_NEXT_NODE))     // pokud nalezen konec tabulky prikazu
+            return(1);
+
+        if(cmd_offs > cmd_tab_size)      // pokud prekrocen konec tabulky
+            return(0);
+
+        cmd_offs += TEST_NEXT_NODE;           // jdi na dalsi prikaz
+    }
+}
+
+
+void cmd_init()
+{
+    cmd_offset = 0;
+    cmd_ix = 0;
+    cmd_save_par_flag = 0;
+    cmd_space_skip = 0;
+    cmd_new_command = 1;
+}
+
+
+
+

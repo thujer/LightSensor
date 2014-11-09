@@ -1,0 +1,64 @@
+
+#include "reg922.h"
+#include "stdio.h"
+#include "timers.h"
+#include "event.h"
+#include "event.def"
+
+#define  ALARM                0
+#define  PIR_ALARM_DELAY   1000   // 1000 = 10sec
+
+
+
+sbit  pir_pin     = P1^7;
+sbit  pir_pin_out = P1^6;
+
+bit   pir_pin_temp = 1;
+
+
+void pir_proc()
+{
+    if(!TIMER_PIR)                                   // pokud vyprsel timeout
+    {
+        if(pir_pin != pir_pin_temp)                  // pokud zmena na vstupu
+        {
+            pir_pin_temp = pir_pin;                  // uloz novy stav pro porovnavani
+            
+            if(pir_pin == ALARM)                     // pokud je alarm na vstupu
+            {
+                TIMER_PIR = PIR_ALARM_DELAY;         // nastav timeout
+                pir_pin_out = 0;                     // sepni vystup (open drain)
+                event_send(EVENT_PIR_ALARM_ON);      // odesli udalost
+            }
+            else                                     // pokud je klid
+            {
+                pir_pin_out = 1;                     // vypni vystup (open drain)
+                event_send(EVENT_PIR_ALARM_OFF);     // odesli udalost
+            }
+        }
+    }
+    else
+    {
+        if(pir_pin == ALARM)                     // pokud je alarm na vstupu
+        {
+            TIMER_PIR = PIR_ALARM_DELAY;         // nastav timeout
+        }        
+    }
+}
+
+
+
+void pir_init()
+{
+    // Set P1.2 as input only
+    P1M1 |= 4;
+    P1M2 &= ~4;
+
+    // Set P1.6 as open drain
+    P1M1 |= 64;
+    P1M2 |= 64;
+
+    TIMER_PIR = PIR_ALARM_DELAY;
+    pir_pin_temp = pir_pin;
+}
+

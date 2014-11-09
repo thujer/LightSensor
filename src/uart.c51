@@ -1,0 +1,275 @@
+//-------------------------------------------------------------------------//
+/////////////////////////////////////////////////////////////////////////////
+// +---------------------------------------------------------------------+ //
+// |                          UART - Serial Driver                       | //
+// |                     ------------------------------                  | //
+// |                       Verze 2.31Tiny Build 071111                   | //
+// |                            MCU: 89LPC922                            | //
+// |                                                                     | //
+// |                         Copyright Tomas Hujer                       | //
+// |                             (c) 2005-2007                           | //
+// |                      thomas.hoodger(at)gmail.com                    | //
+// |                                                                     | //
+// +---------------------------------------------------------------------+ //
+//  Driver for buffered, interrupt communication via RS232                 //
+//  Here is 2 buffers - for receive and for send data. Index of each       //
+//  buffer is rotating type. Each buffer have two indexs - first for       //
+//  write to buffer, second for read from buffer.                          //
+//                                                                         //
+//  Interrupt routine write receive data to UART_RECBUF and increment      //
+//  variable UART_RBIB, which mean the number of bytes in buffer and       //
+//  status of char in buffer means too.                                    //
+//  Sending process is directing by routine UART_PROC(). This routine is   //
+//  called from main loop each or few cycle. Routine wait for count-down   //
+//  variable UART_SDELAY, then read byte from UART_SNDBUF and write him    //
+//  to SBUF.                                                               //
+//                                                                         //
+// ----------------------------------------------------------------------- //
+//                                                                         //
+//  Version history from 2.25:                                             //
+//                                                                         //
+//                       ----------------------------------------------    //
+//        Version 2.27   Pridan status bUART_RB_Overflow - signalizuje     //
+//                       preteceni prijimaciho bufferu, resetuje se        //
+//                       v hlavni smycce.                                  //
+//                       ----------------------------------------------    //
+//        Version 2.28   UART_id.k prejmenovano na UART_drv.def            //
+//                       definice velikosti bufferu presunty do            //
+//                       UART_drv.def                                      //
+//                       ----------------------------------------------    //
+//        Version 2.29   Upraveno pro mensi hw naroky                      //
+//                       ----------------------------------------------    //
+//        Version 2.30   Osetren stav nahodneho prepsani indexu pro        //
+//                       zapis a cteni. Indexy jsou pri kazdem dokonceni   //
+//                       prijmu nebo vysilani resetovany.                  //
+//                       ----------------------------------------------    //
+//                                                                         //
+// ----------------------------------------------------------------------- //
+/////////////////////////////////////////////////////////////////////////////
+
+#include <reg922.H>
+#include <stdarg.h> 
+#include "uart.h"
+
+#define uchar unsigned char
+#define uint unsigned int
+
+/*-------------------------------------------------------------------------*/
+uchar idata  UART_RECBUF[cRECBUFSIZE];
+uchar        UART_RW_IX;
+uchar        UART_RR_IX;
+uchar        UART_RBIB;
+uchar        uart_RByte;
+
+bit          uart_RIBUF;
+bit          bUART_RB_Overflow;    // Flag preteceni prijimaciho bufferu
+
+
+
+// ============================================================== //
+//                        Init serial UART                        //
+// -------------------------------------------------------------- //
+void uart_init()
+{
+    uchar i;
+
+    // clear SMOD0
+    PCON &= ~0x40;
+    SCON = 0x50;
+
+    // set or clear SMOD1
+    PCON &= 0x7f;
+    PCON |= (0 << 8);
+    SSTAT = 0xA1;
+    
+    // enable break detect
+    AUXR1 |= 0x40;
+    
+    // configure baud rate generator
+    BRGCON = 0x00;
+    BRGR0 = 0xF0;
+    BRGR1 = 0x03;
+    BRGCON = 0x03;
+    
+    // TxD = push-pull
+    P1M1 &= ~0x01;
+    P1M2 |= 0x01;
+
+    // RxD = input
+    //P1M1 |= 0x02;
+    //P1M2 &= ~0x02;
+
+    // RxD = quasi-bidirectional
+    // pozn. pri RxD input je pri odpojeni kabelu vyvolano cyklicke preruseni z duvodu nuly na vstupu
+    P1M1 &= ~0x02;
+    P1M2 &= ~0x02;
+    
+    // set receive isr priority to level 2
+    IP0 &= 0xEF;
+    IP0H |= 0x10;
+    //IP0H &= 0xEF;
+
+    // enable uart receive interrupt
+    ESR = 1;
+
+    // set transmit isr priority to 0
+    //IP1 &= 0xBF;
+    //IP1H &= 0xBF;
+
+    // enable uart transmit interrupt
+    //EST = 1;
+
+
+    uart_RIBUF=0;
+    UART_RW_IX=0;
+    UART_RR_IX=0;
+    UART_RBIB=0;
+    uart_RByte=0;
+    for(i=0; i<sizeof(UART_RECBUF); i++) UART_RECBUF[i]=0;
+    bUART_RB_Overflow=0;
+    
+    //ES = 1;            // Povoleni preruseni od serialu
+    //EA = 1;            // Povoleni vsech preruseni
+
+    TI = 1;              // Start transmit
+}
+
+
+
+// ======================================================================= //
+//             Interrupt - Zapis prichoziho znaku do recbuf                //
+// ----------------------------------------------------------------------- //
+#pragma NOAREGS
+void uart_interrupt() interrupt 4 using 2
+{
+    if(RI)                                      // Pokud prijaty znak
+    {
+        RI=0;                                   // Reset priznaku
+
+        if(UART_RBIB < cRECBUFSIZE)             // Pokud neni RBUF plny
+        {
+            //cPIN_SLED = ~cPIN_SLED;
+            
+            //RI=0;                                 // Reset priznaku
+            UART_RW_IX%=cRECBUFSIZE;              // Pretoc index, je-li na max.
+            UART_RECBUF[UART_RW_IX]=SBUF;         // Nacti znak z 232
+            UART_RW_IX++;                         // Posun index
+            UART_RBIB++;                          // Zvys pocet znaku v RBUF
+        }
+        else
+        {
+            bUART_RB_Overflow=1;             // Nastav flag preteceni bufferu
+        }
+    }
+
+    // check for framing error
+    if (SSTAT & 0x08)
+    {
+        // clear interrupt flag
+        SSTAT &= ~0x08;
+    } // if
+
+    // check for break detect
+    if (SSTAT & 0x04)
+    {
+        // clear interrupt flag
+        SSTAT &= ~0x04;
+    } // if
+
+    // check for overrun
+    if (SSTAT & 0x02)
+    {
+        // clear interrupt flag
+        SSTAT &= ~0x02;
+    } // if
+
+}
+#pragma AREGS
+
+
+// +-------------------------------------------------+
+// |             UART device output routine          |
+// +-------------------------------------------------+
+#define XON  0x11
+#define XOFF 0x13
+char UART(char c)
+{
+    /* Body of Keil's putchar goes here */
+
+    if (c == '\n')
+    {
+        if (RI)  
+        {
+            if (SBUF == XOFF)
+            {
+                do
+                {
+                    RI = 0;
+                    while (!RI);
+                }
+                while (SBUF != XON);
+                RI = 0;
+            }
+        }
+                  
+        while (TI == 0);
+        TI = 0;
+        SBUF = 0x0d;                         /* output CR  */
+    } 
+                
+    if (RI)  {
+      if (SBUF == XOFF)  {
+        do  {
+          RI = 0;
+          while (!RI);
+        }
+        while (SBUF != XON);
+        RI = 0;
+      }
+    }
+
+    while (TI == 0);
+    TI = 0;
+    SBUF = c;
+
+    return(c);
+}
+
+
+
+// Vyzvednuti znaku z recbuf
+void uart_proc()
+{
+    if(UART_RBIB)                             // Pokud je v RBUF znak
+    {
+        // LED_Stay(cLED_RD_UART);            // Signalizace cteni z HW serialu
+        uart_RIBUF=1;                         // Nastav flag znaku v RBUF
+        UART_RR_IX %= cRECBUFSIZE;            // Pripadne pretoc index
+        uart_RByte = UART_RECBUF[UART_RR_IX]; // Nacti znak z rbuf
+        UART_RR_IX++;                         // Posun index
+        UART_RBIB--;                          // Sniz pocet znaku v rbuf
+    }
+    else                                      // Pokud je buffer prazdny
+    {
+        if(uart_RIBUF)                        // a je nastaven flag znaku v bufferu
+        {
+            uart_RIBUF=0;                     // Nuluj flag znaku v bufferu
+            UART_RR_IX=0;                     // Nuluj index pro cteni z prijimaciho bufferu
+            UART_RW_IX=0;                     // Nuluj index pro zapis do prijimaciho bufferu
+        }
+    }
+}
+
+
+void uart_disable()
+{
+    ESR = 0;                                  // disable receive interrupt
+//    ES  = 0;                                  // disable serial interrupt
+}
+
+
+void uart_enable()
+{
+    ESR = 1;                                  // enable receive interrupt
+}
+

@@ -1,0 +1,168 @@
+C51 COMPILER V8.05a   LIGHT                                                                11/16/2007 01:49:02 PAGE 1   
+
+
+C51 COMPILER V8.05a, COMPILATION OF MODULE LIGHT
+OBJECT MODULE PLACED IN .\obj\light.obj
+COMPILER INVOKED BY: H:\PrgJaz\Keil\C51\BIN\C51.EXE src\light.c51 OMF2 BROWSE MODP2 INCDIR(.\src) DEBUG PRINT(.\lst\ligh
+                    -t.lst) OBJECT(.\obj\light.obj)
+
+line level    source
+
+   1          
+   2          #include "reg922.h"
+   3          #include "timers.h"
+   4          #include "pin.h"
+   5          
+   6          #define LIGHT_DELAY  0
+   7          
+   8          #define LIGHT_TIME_MAX 500
+   9          
+  10          
+  11          // NPN
+  12          //#define LIGHT_ON  1
+  13          //#define LIGHT_OFF 0
+  14          
+  15          // PNP
+  16          #define LIGHT_ON  0
+  17          #define LIGHT_OFF 1
+  18          
+  19          
+  20          
+  21          sbit    light_pin = P0^7;
+  22          
+  23          bit     light_lightup;        // priznak rozsveceni LED
+  24          bit     light_process_stop;   // zastaveni simulace
+  25          
+  26          int     light_timer_light;    // citac doby svitu
+  27          int     light_timer_dark;     // citac doby tmy
+  28          
+  29          int     light_time_light;     // doba svitu
+  30          int     light_time_dark;      // doba tmy
+  31          
+  32          // ----------------------------------------------------------------------
+  33          
+  34          void light_proc()
+  35          {
+  36   1          if(~light_process_stop)
+  37   1          {
+  38   2              if(!TIMER_LED)
+  39   2              {
+  40   3                  TIMER_LED = LIGHT_DELAY;
+  41   3          
+  42   3                  if(light_timer_light)               // doba svitu
+  43   3                  {
+  44   4                      light_timer_light--;
+  45   4                      light_pin = LIGHT_ON;
+  46   4                  }
+  47   3                  else
+  48   3                  {
+  49   4                      if(light_timer_dark)            // doba tmy
+  50   4                      {
+  51   5                          light_timer_dark--;
+  52   5                          light_pin = LIGHT_OFF;
+  53   5                      }
+  54   4                      else
+C51 COMPILER V8.05a   LIGHT                                                                11/16/2007 01:49:02 PAGE 2   
+
+  55   4                      {
+  56   5                          light_timer_light = light_time_light;
+  57   5                          light_timer_dark  = light_time_dark;
+  58   5          
+  59   5                          if(light_lightup)                      // pokud se LED rozsveci
+  60   5                          {
+  61   6                              if(light_time_dark)
+  62   6                                  light_time_dark--;
+  63   6          
+  64   6                              if(light_time_light < LIGHT_TIME_MAX)
+  65   6                              {
+  66   7                                  light_time_light++;
+  67   7                              }
+  68   6      
+  69   6                              if((light_time_light >= LIGHT_TIME_MAX) && (!light_time_dark))
+  70   6                              {
+  71   7                                  light_pin = LIGHT_ON;                                   // nech sepnuto
+  72   7                                  light_process_stop = 1;
+  73   7                              }
+  74   6                          }
+  75   5                          else
+  76   5                          {
+  77   6                              if(light_time_light)                
+  78   6                                  light_time_light--;
+  79   6      
+  80   6                              if(light_time_dark < LIGHT_TIME_MAX)  
+  81   6                              {
+  82   7                                  light_time_dark++;
+  83   7                              }
+  84   6      
+  85   6                              if((light_time_dark >= LIGHT_TIME_MAX) && (!light_time_light))
+  86   6                              {
+  87   7                                  light_process_stop = 1;
+  88   7                              }
+  89   6                          }
+  90   5                      }
+  91   4                  }
+  92   3              }
+  93   2          }        
+  94   1      }
+  95          
+  96          
+  97          void light_light_fade_in()
+  98          {
+  99   1          TIMER_LED = LIGHT_DELAY;
+ 100   1      
+ 101   1          light_lightup = 1;
+ 102   1      
+ 103   1          //light_timer_light = light_time_light = 0;
+ 104   1          //light_timer_dark  = light_time_dark  = LIGHT_TIME_MAX;
+ 105   1      
+ 106   1          light_process_stop = 0;
+ 107   1      }
+ 108          
+ 109          
+ 110          
+ 111          void light_light_fade_out()
+ 112          {
+ 113   1          TIMER_LED = LIGHT_DELAY;
+ 114   1      
+ 115   1          light_lightup = 0;
+ 116   1      
+C51 COMPILER V8.05a   LIGHT                                                                11/16/2007 01:49:02 PAGE 3   
+
+ 117   1          //light_timer_light = light_time_light = LIGHT_TIME_MAX;
+ 118   1          //light_timer_dark  = light_time_dark  = 0;
+ 119   1      
+ 120   1          light_process_stop = 0;
+ 121   1      }
+ 122          
+ 123          
+ 124          
+ 125          void light_init()
+ 126          {
+ 127   1          pin_set(PORT_ID_P0, 7, PIN_TYPE_OPEN_DRAIN);                      // set pin type P0.7 for PNP transis
+             -tor
+ 128   1          //pin_set(PORT_ID_P0, 7, PIN_TYPE_PUSH_PULL);                         // set pin type P0.7 for NPN tra
+             -nsistor
+ 129   1      
+ 130   1          light_timer_light = light_time_light = 0;
+ 131   1          light_timer_dark  = light_time_dark  = LIGHT_TIME_MAX;
+ 132   1      
+ 133   1          light_light_fade_in();
+ 134   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    241    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      8    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      2    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

@@ -1,0 +1,19 @@
+".\obj\STARTUP.obj",
+".\obj\cmd.obj",
+".\obj\main.obj",
+".\obj\isp.obj",
+".\obj\str.obj",
+".\obj\stdout.obj",
+".\obj\uart.obj",
+".\obj\iap.obj",
+".\obj\pir.obj",
+".\obj\timers.obj",
+".\obj\event.obj",
+".\obj\watchdog.obj",
+".\obj\light.obj",
+".\obj\comparator.obj",
+".\obj\pin.obj" 
+TO ".\obj\light_sensor" 
+
+PRINT(".\lst\light_sensor.map") CLASSES (CODE (C:0x0-C:0x1FFF), CONST (C:0x0-C:0x1FFF), 
+ECODE (C:0x0-C:0x1FFF), HCONST (C:0x0-C:0x1FFF)) 

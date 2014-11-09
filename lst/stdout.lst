@@ -1,0 +1,116 @@
+C51 COMPILER V8.05a   STDOUT                                                               11/16/2007 01:49:01 PAGE 1   
+
+
+C51 COMPILER V8.05a, COMPILATION OF MODULE STDOUT
+OBJECT MODULE PLACED IN .\obj\stdout.obj
+COMPILER INVOKED BY: H:\PrgJaz\Keil\C51\BIN\C51.EXE src\stdout.c51 OMF2 BROWSE MODP2 INCDIR(.\src) DEBUG PRINT(.\lst\std
+                    -out.lst) OBJECT(.\obj\stdout.obj)
+
+line level    source
+
+   1          //
+   2          // +------------------------------------------------------------------------+
+   3          // |         Presmerovani standardniho vystupu na vlastni rutinu            |
+   4          // |                           vesion 1.02                                  |
+   5          // +------------------------------------------------------------------------+
+   6          // | Nahradi rutinu pro standardni vystup znaku volanim vlastni rutiny,     |
+   7          // | nebo rutiny puvodni                                                    |
+   8          // +------------------------------------------------------------------------+
+   9          // | Revision story>                                                        |
+  10          // |                                                                        |
+  11          // |     1.02 ... Pridano staleho presmerovani komunikace                   |
+  12          // |                                                                        |
+  13          // +------------------------------------------------------------------------+
+  14          //
+  15          
+  16          #include <stdio.h>
+  17          #include <stdarg.h>
+  18          #include <uart.h>
+  19          
+  20          bit  printf_ready = 1;                // printf function semaphore
+  21          
+  22          char (* putchar_fp)(char c);          // pointer typu void na rutinu pro vystup znaku
+  23          
+  24          
+  25          // +-------------------------------------------------------+
+  26          // | Nahrazeni puvodni rutiny pro standardni vystup znaku  |
+  27          // +-------------------------------------------------------+
+  28          char putchar(char c)
+  29          {
+  30   1          /* Body of Keil's putchar moved to UART() and replaced with...  */
+  31   1          if(putchar_fp)
+  32   1              return putchar_fp(c);
+  33   1      
+  34   1          return(0);
+  35   1      }
+  36          
+  37          
+  38          // +-------------------------------------------------------+
+  39          // | Formatovany vystup textu na specifikovane rozhranni   |
+  40          // +-------------------------------------------------------+
+  41          //   Rozhranni musi mit deklarovanu funkci pro vystup znaku
+  42          //   funkce je potom volana s nazvem teto funkce v parametru
+  43          //   a vystup je tak docasne presmerovan na jine rozhranni
+  44          //   po skonceni odesilani retezce je vystup opet presmerovan
+  45          //   na seriove rozhranni
+  46          //
+  47          //   my_printf(SCOM, "%s", "Vystup na synchronni serial")
+  48          //
+  49          /*
+  50          int stdout_printf(char (* which_putchar_fp)(char), const char *format, ...)
+  51          {
+  52              int      ret_val;
+  53              va_list  ap;
+  54          
+C51 COMPILER V8.05a   STDOUT                                                               11/16/2007 01:49:01 PAGE 2   
+
+  55              putchar_fp = which_putchar_fp;
+  56          
+  57              va_start(ap, format);
+  58              ret_val = vprintf(format, ap);
+  59              va_end(ap);
+  60          
+  61              putchar_fp = UART;         // set default output
+  62          
+  63              return ret_val;
+  64          }
+  65          */
+  66          
+  67          
+  68          // +------------------------------------------------------------+
+  69          // | Presmerovani standardniho vystupu na specifikovanou rutinu |
+  70          // +------------------------------------------------------------+
+  71          /*
+  72          int stdout_forward(char (* which_putchar_fp)(char))
+  73          {
+  74              putchar_fp = which_putchar_fp;
+  75          }
+  76          */
+  77          
+  78          
+  79          // +-------------------------------------------------------+
+  80          // | Inicializace                                          |
+  81          // +-------------------------------------------------------+
+  82          void stdout_init()
+  83          {
+  84   1          putchar_fp = UART;         // set default output to serial
+  85   1      }
+  86          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =     30    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      3    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      1    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

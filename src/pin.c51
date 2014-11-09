@@ -1,0 +1,80 @@
+#include "reg922.h"
+#include "pin.h"
+
+
+
+void pin_change(char port_id, char pin_id, char state)
+{
+    char pin_mask;
+    char pin_state;
+
+    pin_mask = (1 << pin_id);
+    pin_state = (state << pin_id);
+
+    switch(port_id)
+    {
+        case PORT_ID_P0: 
+                P0 = ((P0 & ~pin_mask) | pin_state); 
+                break;
+
+        case PORT_ID_P1: 
+                P1 = ((P1 & ~pin_mask) | pin_state); 
+                break;
+    }
+}
+
+
+
+unsigned char pin_get_state(char port_id, char pin_id)
+{
+    switch(port_id)
+    {
+        case PORT_ID_P0:  return((P0 & (1 << pin_id))?1:0);
+        case PORT_ID_P1:  return((P1 & (1 << pin_id))?1:0);
+    }
+}
+
+
+
+void pin_set(char port_id, char pin_id, char pin_type)
+{
+    char pin_mask;
+
+    pin_mask = (1 << pin_id);
+
+    switch(pin_type)
+    {
+        case PIN_TYPE_QUASI_BIDIRECTIONAL:
+                switch(port_id)
+                {
+                    case 0: P0M1 &= ~pin_mask;    P0M2 &= ~pin_mask;   break;
+                    case 1: P1M1 &= ~pin_mask;    P1M2 &= ~pin_mask;   break;
+                }
+                break;
+
+        case PIN_TYPE_PUSH_PULL:
+                switch(port_id)
+                {
+                    case 0: P0M1 &= ~pin_mask;   P0M2 &= ~pin_mask;   break;
+                    case 1: P1M1 |= pin_mask;    P1M2 |= pin_mask;    break;
+                }
+                break;
+
+        case PIN_TYPE_INPUT_ONLY:
+                switch(port_id)
+                {
+                    case 0: P0M1 |= pin_mask;    P0M2 |= pin_mask;    break;
+                    case 1: P1M1 &= ~pin_mask;   P1M2 &= ~pin_mask;   break;
+                }
+                break;
+
+        case PIN_TYPE_OPEN_DRAIN:
+                switch(port_id)
+                {
+                    case 0: P0M1 |= pin_mask;    P0M2 |= pin_mask;   break;
+                    case 1: P1M1 |= pin_mask;    P1M2 |= pin_mask;   break;
+                }
+                break;
+    }
+}
+

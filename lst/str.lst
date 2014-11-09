@@ -1,0 +1,73 @@
+C51 COMPILER V8.05a   STR                                                                  11/16/2007 01:49:01 PAGE 1   
+
+
+C51 COMPILER V8.05a, COMPILATION OF MODULE STR
+OBJECT MODULE PLACED IN .\obj\str.obj
+COMPILER INVOKED BY: H:\PrgJaz\Keil\C51\BIN\C51.EXE src\str.c51 OMF2 BROWSE MODP2 INCDIR(.\src) DEBUG PRINT(.\lst\str.ls
+                    -t) OBJECT(.\obj\str.obj)
+
+line level    source
+
+   1          
+   2          // +------------------------------------------------------------+ //
+   3          // |                         String utils                       | //
+   4          // +------------------------------------------------------------+ //
+   5          
+   6          
+   7          #define uchar unsigned char
+   8          #define uint  unsigned int
+   9          
+  10          
+  11          // Prevede znak na velky
+  12          uchar up_char(uchar ch)
+  13          {
+  14   1        if((ch>='a') && (ch<='z')) return(ch & (255-32));
+  15   1        else return(ch);
+  16   1      }
+  17          
+  18          
+  19          // Vynuluje buffer na ukazateli
+  20          void reset_buffer(uchar *buf, uint bytes)
+  21          {
+  22   1        uchar i;
+  23   1        for(i=0; i < bytes; i++) buf[i]=0;
+  24   1      }
+  25          
+  26          
+  27          // Je-li znak cislice vrati 1
+  28          uchar is_num(uchar Char)
+  29          {
+  30   1        if((Char >= '0') && (Char <= '9')) return(1); else return(0);
+  31   1      }
+  32          
+  33          
+  34          // Je-li byte hex cislo, vraci 1
+  35          /*
+  36          bit is_hex(char byte)
+  37          {
+  38              if(((up_char(byte) >= 'A') && (up_char(byte) <='F')) || ((byte >= '0') && (byte <= '9')))
+  39                  return(1);
+  40              else
+  41                  return(0);        
+  42          }
+  43          */
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =     76    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----       5
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+   EDATA SIZE       =   ----    ----
+C51 COMPILER V8.05a   STR                                                                  11/16/2007 01:49:01 PAGE 2   
+
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

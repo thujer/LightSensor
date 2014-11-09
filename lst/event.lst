@@ -1,0 +1,96 @@
+C51 COMPILER V8.05a   EVENT                                                                11/16/2007 01:49:01 PAGE 1   
+
+
+C51 COMPILER V8.05a, COMPILATION OF MODULE EVENT
+OBJECT MODULE PLACED IN .\obj\event.obj
+COMPILER INVOKED BY: H:\PrgJaz\Keil\C51\BIN\C51.EXE src\event.c51 OMF2 BROWSE MODP2 INCDIR(.\src) DEBUG PRINT(.\lst\even
+                    -t.lst) OBJECT(.\obj\event.obj)
+
+line level    source
+
+   1          
+   2          
+   3          #define MAX_EVENTS_COUNT    5
+   4          
+   5          unsigned char idata  event[MAX_EVENTS_COUNT];       // buffer udalosti
+   6          
+   7          char   idata  event_in_buffer;                      // pocet udalosti v bufferu
+   8          char   idata  event_index_write;                    // index pro zapis udalosti
+   9          char   idata  event_index_read;                     // index pro cteni udalosti
+  10          
+  11          bit    event_overflow;                              // priznak prepisu udalosti
+  12          
+  13          // -------------------------------------------------------------------------------------- 
+  14          
+  15          // +-------------------------------------+
+  16          // |   Odeslani udalosti do bufferu      |
+  17          // +-------------------------------------+
+  18          // Ulozi udalost do bufferu udalosti a upravi ukazatele
+  19          void event_send(unsigned char event_id)
+  20          {
+  21   1          if(event_in_buffer < MAX_EVENTS_COUNT)       // Pokud neni buffer udalosti plny
+  22   1          {
+  23   2              event_index_write %= MAX_EVENTS_COUNT;   // Pretoc index, je-li na max.
+  24   2              event[event_index_write] = event_id;     // zapis udalost do bufferu
+  25   2              event_index_write++;                     // Posun index
+  26   2              event_in_buffer++;                       // Zvys pocet udalosti v bufferu
+  27   2          }
+  28   1          else
+  29   1          {
+  30   2              event_overflow=1;                        // Nastav flag preteceni bufferu
+  31   2          }
+  32   1      
+  33   1      }
+  34          
+  35          // +-------------------------------------+
+  36          // |   Nacteni udalosti z bufferu        |
+  37          // +-------------------------------------+
+  38          // Vrati nejstarsi udalost a upravi ukazatele v bufferu
+  39          char event_get()
+  40          {
+  41   1          unsigned char evnt;
+  42   1      
+  43   1          if(event_in_buffer)
+  44   1          {
+  45   2              event_index_read %= MAX_EVENTS_COUNT;   // pretoc index, je-li na max.
+  46   2              evnt = event[event_index_read];         // nacti udalost z bufferu
+  47   2              event_index_read++;                     // posun index
+  48   2              event_in_buffer--;                      // dekrementuj pocet udalosti v bufferu
+  49   2              return(evnt);
+  50   2          }
+  51   1      }
+  52          
+  53          
+  54          // +-------------------------------------+
+C51 COMPILER V8.05a   EVENT                                                                11/16/2007 01:49:01 PAGE 2   
+
+  55          // |   Init promennych                   |
+  56          // +-------------------------------------+
+  57          void event_init()
+  58          {
+  59   1          event_in_buffer = 0;
+  60   1          event_index_write = 0;
+  61   1          event_index_read = 0;
+  62   1          event_overflow = 0;
+  63   1      }
+  64          
+  65          
+  66          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =     86    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =      8    ----
+   BIT SIZE         =      1    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

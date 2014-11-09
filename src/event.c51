@@ -1,0 +1,66 @@
+
+
+#define MAX_EVENTS_COUNT    5
+
+unsigned char idata  event[MAX_EVENTS_COUNT];       // buffer udalosti
+
+char   idata  event_in_buffer;                      // pocet udalosti v bufferu
+char   idata  event_index_write;                    // index pro zapis udalosti
+char   idata  event_index_read;                     // index pro cteni udalosti
+
+bit    event_overflow;                              // priznak prepisu udalosti
+
+// -------------------------------------------------------------------------------------- 
+
+// +-------------------------------------+
+// |   Odeslani udalosti do bufferu      |
+// +-------------------------------------+
+// Ulozi udalost do bufferu udalosti a upravi ukazatele
+void event_send(unsigned char event_id)
+{
+    if(event_in_buffer < MAX_EVENTS_COUNT)       // Pokud neni buffer udalosti plny
+    {
+        event_index_write %= MAX_EVENTS_COUNT;   // Pretoc index, je-li na max.
+        event[event_index_write] = event_id;     // zapis udalost do bufferu
+        event_index_write++;                     // Posun index
+        event_in_buffer++;                       // Zvys pocet udalosti v bufferu
+    }
+    else
+    {
+        event_overflow=1;                        // Nastav flag preteceni bufferu
+    }
+
+}
+
+// +-------------------------------------+
+// |   Nacteni udalosti z bufferu        |
+// +-------------------------------------+
+// Vrati nejstarsi udalost a upravi ukazatele v bufferu
+char event_get()
+{
+    unsigned char evnt;
+
+    if(event_in_buffer)
+    {
+        event_index_read %= MAX_EVENTS_COUNT;   // pretoc index, je-li na max.
+        evnt = event[event_index_read];         // nacti udalost z bufferu
+        event_index_read++;                     // posun index
+        event_in_buffer--;                      // dekrementuj pocet udalosti v bufferu
+        return(evnt);
+    }
+}
+
+
+// +-------------------------------------+
+// |   Init promennych                   |
+// +-------------------------------------+
+void event_init()
+{
+    event_in_buffer = 0;
+    event_index_write = 0;
+    event_index_read = 0;
+    event_overflow = 0;
+}
+
+
+

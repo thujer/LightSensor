@@ -1,0 +1,289 @@
+C51 COMPILER V8.05a   MAIN                                                                 11/16/2007 01:49:01 PAGE 1   
+
+
+C51 COMPILER V8.05a, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\obj\main.obj
+COMPILER INVOKED BY: H:\PrgJaz\Keil\C51\BIN\C51.EXE src\main.c51 OMF2 BROWSE MODP2 INCDIR(.\src) DEBUG PRINT(.\lst\main.
+                    -lst) OBJECT(.\obj\main.obj)
+
+line level    source
+
+   1          
+   2          //--------------------------------------------------------------------------------------------------------
+             -----//
+   3          //                                        SPIDER GSM MODULE                                               
+             -    //
+   4          //                                       -------------------                                              
+             -    //
+   5          //                                          Version 2.xx                                                  
+             -    //
+   6          //--------------------------------------------------------------------------------------------------------
+             -----//
+   7          
+   8          #include <reg922.h>                     // register definition
+   9          #include <stdio.h>          // Standard I/O routines
+  10          #include "iap.h"            // In Application Programming
+  11          #include "isp.h"            // ISP mode access security
+  12          //#include "scom.h"           // Synchronni komunikace
+  13          //#include "scom.def"         // Konfigurace pro SCOM komunikaci
+  14          #include "stdout.h"         // Standard output forwards
+  15          #include "light.h"          // Light fadein/fadeout driver
+  16          #include "pir.h"            // PIR sensor driver
+  17          #include "timers.h"         // Timer 0 services init
+  18          #include "event.h"          // driver udalosti
+  19          #include "event.def"        // definice udalosti
+  20          #include "watchdog.h"       // watchdog driver
+  21          //#include "photo.h"          // photo diode driver
+  22          #include "cmd.h"            // command detector
+  23          #include "cmd.def"          // commands table
+  24          #include "uart.h"                   // Uart driver
+  25          #include "comparator.h"     // Analog comparators driver
+  26          #include "pin.h"            // Pin utils
+  27          
+  28          //--------------------------------------------------------------------------------------------------------
+             -----
+  29          // Command source
+  30          typedef enum {
+  31                   CMD_INPUT_UART  =  0,
+  32                   CMD_INPUT_PDU   =  1,
+  33          };
+  34          
+  35          
+  36          //--------------------------------------------------------------------------------------------------------
+             -----
+  37          
+  38          
+  39          void main_cpu_init()
+  40          {
+  41   1          EA = 1;
+  42   1      }
+  43          
+  44          
+  45          
+  46          void main_uart_command(uchar command_id)
+  47          {
+C51 COMPILER V8.05a   MAIN                                                                 11/16/2007 01:49:01 PAGE 2   
+
+  48   1          char pin_id;
+  49   1          char pin_state;
+  50   1      
+  51   1          switch(command_id)
+  52   1          {
+  53   2              case CMD_BOOT:  
+  54   2                      isp_recovery();
+  55   2                      break;
+  56   2              
+  57   2              /*
+  58   2              case CMD_HCOM:  
+  59   2                      while(~printf_ready); 
+  60   2                      my_printf(UART, "HCOM\n");       
+  61   2                      printf_ready = 1;    
+  62   2                      break;
+  63   2              */
+  64   2      
+  65   2              /*
+  66   2              case CMD_SCOM:  
+  67   2                      while(~printf_ready); 
+  68   2                      my_printf(SCOM, "SCOM\n");       
+  69   2                      printf_ready = 1;    
+  70   2                      break;
+  71   2              */
+  72   2      
+  73   2              case CMD_P0:
+  74   2                      //while(~printf_ready); 
+  75   2      
+  76   2                      if(cmd_par_buf_cnt)
+  77   2                      {
+  78   3                          if(cmd_par_buf_cnt > 1)
+  79   3                          {
+  80   4                              pin_id    = cmd_getparnum(0, 1);          // get pin id from parameter
+  81   4                              pin_state = cmd_getparnum(1, 1);          // get pin state from parameter
+  82   4      
+  83   4                              pin_change(PORT_ID_P0, pin_id, pin_state);
+  84   4                          }
+  85   3      
+  86   3                          printf("P0.%i == %i\r\n", cmd_getparnum(0, 1), (int) pin_get_state(PORT_ID_P0, cmd_get
+             -parnum(0, 1)));
+  87   3                      }
+  88   2                      else
+  89   2                          printf("P0: %i\n\r\n", (int) P0); 
+  90   2                      //printf_ready = 1;    
+  91   2                      break;
+  92   2      
+  93   2              case CMD_P1:    
+  94   2                      //while(~printf_ready); 
+  95   2                      if(cmd_par_buf_cnt)
+  96   2                      {
+  97   3                          if(cmd_par_buf_cnt > 1)
+  98   3                          {
+  99   4                              pin_id    = cmd_getparnum(0, 1);          // get pin id from parameter
+ 100   4                              pin_state = cmd_getparnum(1, 1);          // get pin state from parameter
+ 101   4      
+ 102   4                              pin_change(PORT_ID_P1, pin_id, pin_state);
+ 103   4                          }
+ 104   3      
+ 105   3                          printf("P1.%i == %i\r\n", cmd_getparnum(0, 1), (int) pin_get_state(PORT_ID_P1, cmd_get
+             -parnum(0, 1)));
+ 106   3                      }
+ 107   2                      else
+C51 COMPILER V8.05a   MAIN                                                                 11/16/2007 01:49:01 PAGE 3   
+
+ 108   2                          printf("P1: %i\n\r\n", (int) P1); 
+ 109   2      
+ 110   2                      //printf_ready = 1;    
+ 111   2                      break;
+ 112   2      
+ 113   2              case CMD_FADEIN:
+ 114   2                      light_light_fade_in();
+ 115   2                      break;
+ 116   2      
+ 117   2              case CMD_FADEOUT:
+ 118   2                      light_light_fade_out();
+ 119   2                      break;
+ 120   2      
+ 121   2              case CMD_INFINITE_LOOP:
+ 122   2                      while(1);
+ 123   2                      break;
+ 124   2      
+ 125   2              case CMD_UART_OFF:
+ 126   2                      uart_disable();
+ 127   2                      break;
+ 128   2      
+ 129   2              case CMD_UART_ON:
+ 130   2                      uart_enable();
+ 131   2                      break;
+ 132   2          }
+ 133   1      }
+ 134          
+ 135          
+ 136          //-------------------------------------//
+ 137          //            Startup task             //
+ 138          //-------------------------------------//
+ 139          void main()
+ 140          {
+ 141   1          isp_security_loop();                               // ISP mode recovery delay
+ 142   1      
+ 143   1          watchdog_init();
+ 144   1          
+ 145   1          event_init();
+ 146   1          event_send(EVENT_STARTUP);
+ 147   1      
+ 148   1          light_init();
+ 149   1      
+ 150   1          uart_init();
+ 151   1      
+ 152   1          pir_init();
+ 153   1      
+ 154   1          main_cpu_init();
+ 155   1      
+ 156   1          stdout_init();
+ 157   1      
+ 158   1          timers_init();
+ 159   1      
+ 160   1          comparators_init(COMP_1, COMP_INPUTA, COMP_INTERNALREF, COMP_OUTPUTDISABLE);
+ 161   1      
+ 162   1          //while(~printf_ready);
+ 163   1          //stdout_printf(UART,"Light sensor 1.00a, date: %s\r\n", __DATE__);
+ 164   1          printf("Light sensor 1.07, date: %s\r\n", __DATE__);
+ 165   1          //printf_ready = 1;
+ 166   1          cmd_init();
+ 167   1      
+ 168   1          if(~cmd_validate_test(&CMD_TAB_GSM, sizeof(CMD_TAB_GSM)))       // validace tabulky prikazu
+ 169   1              printf("CMD TABLE ERROR!\r\n");
+C51 COMPILER V8.05a   MAIN                                                                 11/16/2007 01:49:01 PAGE 4   
+
+ 170   1      
+ 171   1          //scom_init();
+ 172   1      
+ 173   1          // Set P0.0 as input only
+ 174   1          /*
+ 175   1          P0M1 |= 1;
+ 176   1          P0M2 &= ~1;
+ 177   1          */
+ 178   1      
+ 179   1          while(1)
+ 180   1          {
+ 181   2              isp_security_check();
+ 182   2      
+ 183   2              if(uart_RIBUF)
+ 184   2              {
+ 185   3                  //while(~printf_ready); 
+ 186   3                  putchar(uart_RByte);
+ 187   3                  //printf_ready = 1;    
+ 188   3      
+ 189   3                  main_uart_command(cmd_detect(&CMD_TAB_GSM, uart_RByte));
+ 190   3              }
+ 191   2      
+ 192   2              if(event_in_buffer)
+ 193   2              {
+ 194   3                  switch(event_get())
+ 195   3                  {
+ 196   4                      case EVENT_STARTUP:
+ 197   4                              break;
+ 198   4      
+ 199   4                      case EVENT_PIR_ALARM_ON:
+ 200   4                              if(~comparators_getoutput(COMP_1))              // rozsvit pouze pokud je tma
+ 201   4                                  light_light_fade_in();
+ 202   4      
+ 203   4                              printf("PIR ALARM\r\n");
+ 204   4                              break;
+ 205   4      
+ 206   4                      case EVENT_PIR_ALARM_OFF:
+ 207   4                              light_light_fade_out();
+ 208   4      
+ 209   4                              printf("PIR QUIET\r\n");
+ 210   4                              break;
+ 211   4      
+ 212   4                      case EVENT_CMP1_STATE_CHANGE:
+ 213   4                              //printf("CMP1: %d\r\n", (int) comparators_getoutput(COMP_1));
+ 214   4                              break;
+ 215   4      
+ 216   4                      case EVENT_CMP2_STATE_CHANGE:
+ 217   4                              //printf("CMP2: %d\r\n", (int) comparators_getoutput(COMP_2));
+ 218   4                              break;
+ 219   4                  }
+ 220   3              }
+ 221   2      
+ 222   2              if(event_overflow)
+ 223   2              {
+ 224   3                  event_overflow = 0;
+ 225   3                  printf("EVENT OVERFLOW!\r\n");
+ 226   3              }
+ 227   2      
+ 228   2              /*
+ 229   2              if(pin_test != pin_backup)
+ 230   2              {
+ 231   2                  pin_backup = pin_test;
+C51 COMPILER V8.05a   MAIN                                                                 11/16/2007 01:49:01 PAGE 5   
+
+ 232   2                  printf("pin: %s\r\n",pin_test?"1":"0");
+ 233   2              }
+ 234   2              */
+ 235   2      
+ 236   2              light_proc();
+ 237   2              pir_proc();
+ 238   2              uart_proc();
+ 239   2              comparator_proc();
+ 240   2              watchdog_feed();
+ 241   2          }
+ 242   1      }
+ 243          
+ 244          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    460    ----
+   CONSTANT SIZE    =    232    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----       2
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

@@ -1,0 +1,244 @@
+
+//------------------------------------------------------------------------------------------------------------//
+//                                        SPIDER GSM MODULE                                                   //
+//                                       -------------------                                                  //
+//                                          Version 2.xx                                                      //
+//------------------------------------------------------------------------------------------------------------//
+
+#include <reg922.h>			// register definition
+#include <stdio.h>          // Standard I/O routines
+#include "iap.h"            // In Application Programming
+#include "isp.h"            // ISP mode access security
+//#include "scom.h"           // Synchronni komunikace
+//#include "scom.def"         // Konfigurace pro SCOM komunikaci
+#include "stdout.h"         // Standard output forwards
+#include "light.h"          // Light fadein/fadeout driver
+#include "pir.h"            // PIR sensor driver
+#include "timers.h"         // Timer 0 services init
+#include "event.h"          // driver udalosti
+#include "event.def"        // definice udalosti
+#include "watchdog.h"       // watchdog driver
+//#include "photo.h"          // photo diode driver
+#include "cmd.h"            // command detector
+#include "cmd.def"          // commands table
+#include "uart.h"		    // Uart driver
+#include "comparator.h"     // Analog comparators driver
+#include "pin.h"            // Pin utils
+
+//------------------------------------------------------------------------------------------------------------
+// Command source
+typedef enum {
+         CMD_INPUT_UART  =  0,
+         CMD_INPUT_PDU   =  1,
+};
+
+
+//------------------------------------------------------------------------------------------------------------
+
+
+void main_cpu_init()
+{
+    EA = 1;
+}
+
+
+
+void main_uart_command(uchar command_id)
+{
+    char pin_id;
+    char pin_state;
+
+    switch(command_id)
+    {
+        case CMD_BOOT:  
+                isp_recovery();
+                break;
+        
+        /*
+        case CMD_HCOM:  
+                while(~printf_ready); 
+                my_printf(UART, "HCOM\n");       
+                printf_ready = 1;    
+                break;
+        */
+
+        /*
+        case CMD_SCOM:  
+                while(~printf_ready); 
+                my_printf(SCOM, "SCOM\n");       
+                printf_ready = 1;    
+                break;
+        */
+
+        case CMD_P0:
+                //while(~printf_ready); 
+
+                if(cmd_par_buf_cnt)
+                {
+                    if(cmd_par_buf_cnt > 1)
+                    {
+                        pin_id    = cmd_getparnum(0, 1);          // get pin id from parameter
+                        pin_state = cmd_getparnum(1, 1);          // get pin state from parameter
+
+                        pin_change(PORT_ID_P0, pin_id, pin_state);
+                    }
+
+                    printf("P0.%i == %i\r\n", cmd_getparnum(0, 1), (int) pin_get_state(PORT_ID_P0, cmd_getparnum(0, 1)));
+                }
+                else
+                    printf("P0: %i\n\r\n", (int) P0); 
+                //printf_ready = 1;    
+                break;
+
+        case CMD_P1:    
+                //while(~printf_ready); 
+                if(cmd_par_buf_cnt)
+                {
+                    if(cmd_par_buf_cnt > 1)
+                    {
+                        pin_id    = cmd_getparnum(0, 1);          // get pin id from parameter
+                        pin_state = cmd_getparnum(1, 1);          // get pin state from parameter
+
+                        pin_change(PORT_ID_P1, pin_id, pin_state);
+                    }
+
+                    printf("P1.%i == %i\r\n", cmd_getparnum(0, 1), (int) pin_get_state(PORT_ID_P1, cmd_getparnum(0, 1)));
+                }
+                else
+                    printf("P1: %i\n\r\n", (int) P1); 
+
+                //printf_ready = 1;    
+                break;
+
+        case CMD_FADEIN:
+                light_light_fade_in();
+                break;
+
+        case CMD_FADEOUT:
+                light_light_fade_out();
+                break;
+
+        case CMD_INFINITE_LOOP:
+                while(1);
+                break;
+
+        case CMD_UART_OFF:
+                uart_disable();
+                break;
+
+        case CMD_UART_ON:
+                uart_enable();
+                break;
+    }
+}
+
+
+//-------------------------------------//
+//            Startup task             //
+//-------------------------------------//
+void main()
+{
+    isp_security_loop();                               // ISP mode recovery delay
+
+    watchdog_init();
+    
+    event_init();
+    event_send(EVENT_STARTUP);
+
+    light_init();
+
+    uart_init();
+
+    pir_init();
+
+    main_cpu_init();
+
+    stdout_init();
+
+    timers_init();
+
+    comparators_init(COMP_1, COMP_INPUTA, COMP_INTERNALREF, COMP_OUTPUTDISABLE);
+
+    //while(~printf_ready);
+    //stdout_printf(UART,"Light sensor 1.00a, date: %s\r\n", __DATE__);
+    printf("Light sensor 1.07, date: %s\r\n", __DATE__);
+    //printf_ready = 1;
+    cmd_init();
+
+    if(~cmd_validate_test(&CMD_TAB_GSM, sizeof(CMD_TAB_GSM)))       // validace tabulky prikazu
+        printf("CMD TABLE ERROR!\r\n");
+
+    //scom_init();
+
+    // Set P0.0 as input only
+    /*
+    P0M1 |= 1;
+    P0M2 &= ~1;
+    */
+
+    while(1)
+    {
+        isp_security_check();
+
+        if(uart_RIBUF)
+        {
+            //while(~printf_ready); 
+            putchar(uart_RByte);
+            //printf_ready = 1;    
+
+            main_uart_command(cmd_detect(&CMD_TAB_GSM, uart_RByte));
+        }
+
+        if(event_in_buffer)
+        {
+            switch(event_get())
+            {
+                case EVENT_STARTUP:
+                        break;
+
+                case EVENT_PIR_ALARM_ON:
+                        if(~comparators_getoutput(COMP_1))              // rozsvit pouze pokud je tma
+                            light_light_fade_in();
+
+                        printf("PIR ALARM\r\n");
+                        break;
+
+                case EVENT_PIR_ALARM_OFF:
+                        light_light_fade_out();
+
+                        printf("PIR QUIET\r\n");
+                        break;
+
+                case EVENT_CMP1_STATE_CHANGE:
+                        //printf("CMP1: %d\r\n", (int) comparators_getoutput(COMP_1));
+                        break;
+
+                case EVENT_CMP2_STATE_CHANGE:
+                        //printf("CMP2: %d\r\n", (int) comparators_getoutput(COMP_2));
+                        break;
+            }
+        }
+
+        if(event_overflow)
+        {
+            event_overflow = 0;
+            printf("EVENT OVERFLOW!\r\n");
+        }
+
+        /*
+        if(pin_test != pin_backup)
+        {
+            pin_backup = pin_test;
+            printf("pin: %s\r\n",pin_test?"1":"0");
+        }
+        */
+
+        light_proc();
+        pir_proc();
+        uart_proc();
+        comparator_proc();
+        watchdog_feed();
+    }
+}
+
+

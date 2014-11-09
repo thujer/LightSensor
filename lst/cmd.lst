@@ -1,0 +1,474 @@
+C51 COMPILER V8.05a   CMD                                                                  11/16/2007 01:49:01 PAGE 1   
+
+
+C51 COMPILER V8.05a, COMPILATION OF MODULE CMD
+OBJECT MODULE PLACED IN .\obj\cmd.obj
+COMPILER INVOKED BY: H:\PrgJaz\Keil\C51\BIN\C51.EXE src\cmd.c51 OMF2 BROWSE MODP2 INCDIR(.\src) DEBUG PRINT(.\lst\cmd.ls
+                    -t) OBJECT(.\obj\cmd.obj)
+
+line level    source
+
+   1          //-------------------------------------------------------------------------//
+   2          /////////////////////////////////////////////////////////////////////////////
+   3          // +---------------------------------------------------------------------+ //
+   4          // |                      Detekce prikazu a parametru                    | //
+   5          // |                     ------------------------------                  | //
+   6          // |                       Verze 1.04Tiny Build 071111                   | //
+   7          // |                                                                     | //
+   8          // |                         Copyright Tomas Hujer                       | //
+   9          // |                             (c) 2005-2007                           | //
+  10          // |                      thomas.hoodger(at)gmail.com                    | //
+  11          // |                                                                     | //
+  12          // +---------------------------------------------------------------------+ //
+  13          // |  Detekuje sekvencni prikazy podle tabulky prikazu v parametru       | //
+  14          // |  cmd_detect(*cmd_tab, get_char). cmd_tab je pointer na tab.         | //
+  15          // |  get_char je promenna kde se sekvencne objevuje testovany znak.     | //
+  16          // |  Funkce prochazi tabulkou prikazu a prohledava nody, u kazdeho      | //
+  17          // |  prikazu je udan index nasledujiciho nodu. Jsou prohledavany        | //
+  18          // |  vsechny nasledne nody, dokud neni nalezen nod se stejnym indexem,  | //
+  19          // |  jako ma aktualni znak v prikazu. Pokud je nalezen oddelovaci znak  | //
+  20          // |  (separator) je prikaz kompletni a je vracena hodnota uvedena       | //
+  21          // |  prislusnem nodu.                                                   | //
+  22          // |  Tato verze byla vyvinuta pro minimalni naroky na pamet a mnozstvi  | //
+  23          // |  kodu.                                                              | //
+  24          // +---------------------------------------------------------------------+ //
+  25          //                                                                         //
+  26          //   Version history:                                                      //
+  27          //    1.01    070823   Prvni evolution verze                               //
+  28          //                                                                         //
+  29          //    1.02    071110   Pridana validace tabulky prikazu                    //
+  30          //                                                                         //
+  31          //    1.03    071111   Opravena chyba v detekci 1. prikazu                 //
+  32          //                                                                         //
+  33          //    1.04    071115   Opravena chyba v nacitani 2. a dalsich parametru    //
+  34          //                                                                         //
+  35          //  ---------------------------------------------------------------------  //
+  36          //    TODO: upravit na vice instanci, detekce bude probihat v ruznych      //
+  37          //          casovych rovinach, nektere z nich se nesynchronne prolinaji    //
+  38          //                                                                         //
+  39          //          1. detekce prikazu na HW serialu - prikazy modemu              //
+  40          //                                                                         //
+  41          //          2. detekce prikazu v dekodovanem PDU textu, bezi virtualne,    //
+  42          //             cca 0.87x pomaleji nez detekce na HW serialu,               //
+  43          //             volana pri kazdem dekodovanem znaku PDU textu,              //
+  44          //                                                                         //
+  45          //          3. detekce prikazu na SCOM, synchronni komunikaci, bezi        //
+  46          //             nezavisle na HW serialu, predpoklada se nekolikanasobna     //
+  47          //             rychlost oproti serialu.
+  48          //                                                                         //
+  49          //                                                                         //
+  50          /////////////////////////////////////////////////////////////////////////////
+  51          //-------------------------------------------------------------------------//
+  52          
+  53          
+  54          #define uchar unsigned char
+C51 COMPILER V8.05a   CMD                                                                  11/16/2007 01:49:01 PAGE 2   
+
+  55          #define uint unsigned int
+  56          
+  57          #include <reg922.h>
+  58          #include <stdio.h>
+  59          #include "str.h"
+  60          
+  61          
+  62          int  cmd_offset;        // index zacatku aktualniho prikazu
+  63          int  cmd_ix;            // index v prikazu (pozice od offsetu)
+  64          
+  65          bit  cmd_save_par_flag; // parameter saving flag
+  66          bit  cmd_space_skip;    // skip spaces in parameter flag
+  67          bit  cmd_new_command;   // new command will be coming
+  68          
+  69          char cmd_par_buf[10];   // parameter buffer
+  70          char cmd_par_buf_ix;    // parameter index
+  71          char cmd_par_buf_cnt;   // paramaters count 
+  72          
+  73          //----------------------------------------------------------------------------------
+  74          
+  75          
+  76          
+  77          
+  78          
+  79          // Vrati ukazatel na n-ty parametr
+  80          uchar *cmd_getpar(uchar index)
+  81          {
+  82   1        uchar i;
+  83   1        uchar ct;
+  84   1        
+  85   1        i=1;                                                               // Nastav index prvniho paramatru
+  86   1        ct=0;                                                              // Nuluj citac parametru
+  87   1        while(ct!=index)                                                   // Citej parametry dokud neni cislo p
+             -arametru stejne jako index
+  88   1        {
+  89   2          if(ct == index) break;                                           // Pokud je cislo parametru stejne ja
+             -ko index, parametr nalezen, konci
+  90   2          if(!cmd_par_buf[i]) ct++;                                        // Pokud je nalezena #0, pokracuj s d
+             -alsim parametrem
+  91   2          i++;                                                             // Inc index v bufferu
+  92   2      
+  93   2          //if(i > cmd_par_buf_ix) break;                                    // pokud konec parametru, prerus
+  94   2        }
+  95   1        return(cmd_par_buf + i);                                           // Vrat skutecnou adresu parametru
+  96   1      }
+  97          
+  98          
+  99          
+ 100          // Vrati cislo zkonvertovane z n-teho parametru
+ 101          uint cmd_getparnum(uchar index, uchar omez)
+ 102          {
+ 103   1          uchar Num[5];
+ 104   1          uchar IxNum,IxPar;
+ 105   1          uint  DestInt;
+ 106   1          uint  Nasob;
+ 107   1          uchar Ch;
+ 108   1          
+ 109   1          for(IxNum=0; IxNum<5; IxNum++) Num[IxNum]=0;       // Nuluj buffer
+ 110   1          
+ 111   1          // Nacti cislice do bufferu
+ 112   1          IxNum=0;
+ 113   1          IxPar=0;
+C51 COMPILER V8.05a   CMD                                                                  11/16/2007 01:49:01 PAGE 3   
+
+ 114   1          
+ 115   1          while(IxNum < 5)                                   // 5 cislic (Dec Int)
+ 116   1          {
+ 117   2              if(Ch = cmd_getpar(index)[IxPar])
+ 118   2              {
+ 119   3                  if(!is_num(Ch))
+ 120   3                  {
+ 121   4                      IxPar++;
+ 122   4                  }
+ 123   3                  else
+ 124   3                  {
+ 125   4                      Num[IxNum]=Ch; IxNum++; IxPar++;
+ 126   4                  }
+ 127   3              }
+ 128   2              else
+ 129   2                  break;    
+ 130   2          }
+ 131   1      
+ 132   1          // IxNum...PocetCislic
+ 133   1          if((omez) && (omez < IxNum)) IxNum = omez;  // Omezeni poctu cislic
+ 134   1      
+ 135   1          // Vypocitej integer ze znaku v parametru
+ 136   1          Nasob=1;                          // Nastav pocatecniho nasobitele
+ 137   1          DestInt=0;                        // Nuluj vysledne cislo
+ 138   1          while(IxNum)
+ 139   1          {
+ 140   2              DestInt+= (Num[IxNum-1]-'0') * Nasob; // pocitej
+ 141   2              Nasob *= 10;
+ 142   2              IxNum--;
+ 143   2          }
+ 144   1      
+ 145   1          return(DestInt);
+ 146   1      }
+ 147          
+ 148          
+ 149          // Vrati pocet parametru
+ 150          /*
+ 151          char cmd_par_count()
+ 152          {
+ 153              return(cmd_par_buf_ix);
+ 154          }
+ 155          */
+ 156          
+ 157          
+ 158          
+ 159          // Porovnava znak v get_char se znaky v tabulce cmd_tab
+ 160          uchar cmd_detect(char *cmd_tab, uchar get_char)
+ 161          {
+ 162   1          uchar out;
+ 163   1          uchar curr_char;
+ 164   1          int   node_ix;
+ 165   1      
+ 166   1          #define SEPARATOR    '@'
+ 167   1          #define CURR_CHAR    cmd_tab[cmd_ix + cmd_offset + 4 - NODE_IX]
+ 168   1      
+ 169   1          // Node index
+ 170   1          #define NODE_IX      cmd_tab[cmd_offset + 1]
+ 171   1      
+ 172   1          // Next node index
+ 173   1          #define NEXT_NODE    cmd_tab[cmd_offset + 2]
+ 174   1      
+ 175   1          // Node value
+C51 COMPILER V8.05a   CMD                                                                  11/16/2007 01:49:01 PAGE 4   
+
+ 176   1          #define NODE_VALUE   cmd_tab[cmd_offset + 3]
+ 177   1          
+ 178   1      
+ 179   1          if(cmd_save_par_flag)                                          // pokud je aktivni ukladani parametru
+ 180   1          {
+ 181   2              switch(get_char)
+ 182   2              {
+ 183   3                  case '/':                                              // Znaky pro dalsi parametr
+ 184   3                  case '.':
+ 185   3                  case ':':
+ 186   3                  case ',':
+ 187   3                  case ' ':
+ 188   3                      if(cmd_par_buf_ix < sizeof(cmd_par_buf))           // pokud je v bufferu misto
+ 189   3                      {
+ 190   4                          if(~cmd_space_skip) 
+ 191   4                          {
+ 192   5                              cmd_par_buf[cmd_par_buf_ix] = 0;           // zapis konec aktualniho parametru
+ 193   5                              cmd_par_buf_ix++;                          // posun index
+ 194   5                              cmd_par_buf_cnt++;                         // inc par count
+ 195   5                          }
+ 196   4      
+ 197   4                          if(get_char == ' ')  
+ 198   4                              cmd_space_skip = 1;                        // aktivace vynechani mezer
+ 199   4                          else
+ 200   4                              cmd_space_skip = 0;                        // deaktivace vynechani mezer
+ 201   4                      }
+ 202   3                      break;                                 
+ 203   3      
+ 204   3                  case ';':                                              // Konec ukladani parametru
+ 205   3                  case '@':
+ 206   3                  case '*':
+ 207   3                  case '#':
+ 208   3                  case  10:
+ 209   3                  case  13:   
+ 210   3                      if(cmd_par_buf_ix < sizeof(cmd_par_buf))           // pokud je v bufferu misto
+ 211   3                      {
+ 212   4                          cmd_par_buf[cmd_par_buf_ix] = 0;               // zapis konec aktualniho parametru
+ 213   4                      }
+ 214   3      
+ 215   3                      cmd_par_buf[sizeof(cmd_par_buf) - 1] = 0;
+ 216   3      
+ 217   3                      cmd_save_par_flag = 0;                             // deaktivace modu zachytavani parametr
+             -u
+ 218   3      
+ 219   3                      out = NODE_VALUE;                                  // set output value
+ 220   3                      cmd_offset = 0;                                    // reset command offset
+ 221   3                      
+ 222   3                      // pozn. zde neresetovat index parametru, 
+ 223   3                      // bud nastavit priznak a resetovat pozdeji nebo zkopirovat                               
+             -           
+ 224   3                      // cmd_par_buf_ix = 0;                                // reset command index
+ 225   3                      cmd_new_command = 1;
+ 226   3      
+ 227   3                      return(out);
+ 228   3                      break;
+ 229   3      
+ 230   3                  case 8:                                                // backspace
+ 231   3                      if(cmd_par_buf_ix)
+ 232   3                      {
+ 233   4                          cmd_par_buf_ix--;
+ 234   4                          cmd_par_buf[cmd_par_buf_ix] = 0;
+ 235   4                      }
+C51 COMPILER V8.05a   CMD                                                                  11/16/2007 01:49:01 PAGE 5   
+
+ 236   3                      break;
+ 237   3      
+ 238   3                  case '"': break;                                         // Uvozovky nezapisovat
+ 239   3      
+ 240   3                  default: 
+ 241   3                      if(cmd_par_buf_ix < sizeof(cmd_par_buf))             // pokud je v bufferu misto
+ 242   3                      {
+ 243   4                          cmd_par_buf[cmd_par_buf_ix] = get_char;          // zapis aktualni znak
+ 244   4                          cmd_par_buf_ix++; 
+ 245   4                      }
+ 246   3                      else
+ 247   3                      {
+ 248   4                          cmd_par_buf[sizeof(cmd_par_buf) - 1] = 0;
+ 249   4                      }
+ 250   3      
+ 251   3                      cmd_space_skip = 0;                                  // deaktivuj flag vynechani mezer
+ 252   3                      break;
+ 253   3              }
+ 254   2          }
+ 255   1          else
+ 256   1          {
+ 257   2              COMPARE:
+ 258   2      
+ 259   2              if(cmd_new_command)                   // if new command expected
+ 260   2              {
+ 261   3                  cmd_new_command = 0;              // reset flag of new command
+ 262   3                  cmd_par_buf_ix = 0;               // reset parameter index
+ 263   3              }
+ 264   2      
+ 265   2              get_char = up_char(get_char);         // convert char to UpCase
+ 266   2          
+ 267   2              curr_char = CURR_CHAR;                // get current char
+ 268   2              if(curr_char == SEPARATOR)
+ 269   2              {
+ 270   3                  // Pokud nalezen separator, pricti a aktualnimu offsetu aktualni index
+ 271   3                  cmd_offset += cmd_ix;
+ 272   3              }
+ 273   2          
+ 274   2              curr_char = CURR_CHAR;                // get current char
+ 275   2              if(curr_char == get_char)          
+ 276   2              {
+ 277   3                  // pokud jsou znaky shodne
+ 278   3          
+ 279   3                  CHAR_OK:
+ 280   3                  //printf("CMD %c == %c\r\n", CURR_CHAR, get_char);
+ 281   3          
+ 282   3                  cmd_ix++;                                 // posun lokalni index v prikazu
+ 283   3          
+ 284   3                  curr_char = CURR_CHAR;                    // get current char
+ 285   3                  if(curr_char == '@')                      // test konce prikazu
+ 286   3                  {                              
+ 287   4                      // Prikaz je kompletni, aktivuj ukladani parametru
+ 288   4      
+ 289   4                      reset_buffer(cmd_par_buf, sizeof(cmd_par_buf));       // clear buffer
+ 290   4                      cmd_par_buf_cnt = 0;
+ 291   4                      cmd_par_buf_ix  = 0;                                  // start offset
+ 292   4      
+ 293   4                      cmd_save_par_flag = 1;
+ 294   4                      cmd_space_skip = 0;
+ 295   4      
+ 296   4                      return(0);
+ 297   4                  }
+C51 COMPILER V8.05a   CMD                                                                  11/16/2007 01:49:01 PAGE 6   
+
+ 298   3              }
+ 299   2              else
+ 300   2              {
+ 301   3                  // pokud nejsou znaky shodne, nacti dalsi nod, porovnej lokalni index,
+ 302   3                  // pokud je lokalni index > index nodu, prikaz s timto znakem neexistuje, restartuj detekci
+ 303   3                  // pokud je lokalni index < index nodu, hledej dalsi nod
+ 304   3                  // pokud jsou indexy shodne, nastav hodnotu offsetu nodu jako aktualni a opakuj detekci
+ 305   3          
+ 306   3                  //printf("CMD %c != %c\r\n", CURR_CHAR, get_char);
+ 307   3          
+ 308   3                  FIND_NEXT_NODE:
+ 309   3          
+ 310   3                  if(NEXT_NODE)
+ 311   3                  {
+ 312   4                      cmd_offset += NEXT_NODE;
+ 313   4                      //printf("nextnode:%i\r\n", (int) cmd_offset);
+ 314   4              
+ 315   4                      if(cmd_ix < NODE_IX)                      
+ 316   4                      {
+ 317   5                          // novy uzel ma mensi index, pokracuj v hledani dalsiho uzle
+ 318   5                          //printf("cmd_ix[%i] < NODE_IX[%i], find next node\r\n", (int) cmd_ix, (int) NODE_IX);
+ 319   5              
+ 320   5                          goto FIND_NEXT_NODE;
+ 321   5                      }
+ 322   4              
+ 323   4                      node_ix = NODE_IX;
+ 324   4                      if(cmd_ix > node_ix)                      
+ 325   4                      {
+ 326   5                          // novy uzel ma vetsi index, tedy nebyl nalezen shodny index
+ 327   5                          // ukonci hledani, spust znovu test shodnosti od nuloveho indexu s aktualnim znakem
+ 328   5                          //printf("cmd_ix[%i] > NODE_IX[%i], reset\r\n", (int) cmd_ix, (int) NODE_IX);
+ 329   5              
+ 330   5                          cmd_ix = 0;
+ 331   5                          cmd_offset = 0;
+ 332   5              
+ 333   5                          goto COMPARE;
+ 334   5      
+ 335   5                          // POZN: zde neukoncovat funkci (testovano)
+ 336   5                      }
+ 337   4              
+ 338   4                      
+ 339   4                      node_ix = NODE_IX;
+ 340   4                      if(cmd_ix == node_ix)                      
+ 341   4                      {
+ 342   5                          // pokracuj v testu shodnosti
+ 343   5                          //printf("Next node: ix=%i, ofs=%i, val=%i\r\n", cmd_ix, cmd_offset, (int) NODE_VALUE)
+             -;
+ 344   5              
+ 345   5                          curr_char = CURR_CHAR;                    // get current char
+ 346   5                          if(curr_char == get_char)
+ 347   5                              goto CHAR_OK;
+ 348   5                          else
+ 349   5                              goto FIND_NEXT_NODE;
+ 350   5                      }
+ 351   4                  }
+ 352   3                  else
+ 353   3                  {
+ 354   4                      //printf("Not next node, reset\r\n");
+ 355   4          
+ 356   4                      cmd_ix = 0;
+ 357   4                      cmd_offset = 0;
+ 358   4          
+C51 COMPILER V8.05a   CMD                                                                  11/16/2007 01:49:01 PAGE 7   
+
+ 359   4                      //goto COMPARE;
+ 360   4                  }
+ 361   3              }
+ 362   2          }
+ 363   1          return(0);
+ 364   1      }
+ 365          
+ 366          
+ 367          /*
+ 368          // Je-li znak cislo, pismeno, nebo znamenko vrati 1
+ 369          uchar IsPrint(uchar Char)
+ 370          {
+ 371            if(((Char >= 'A') && (Char <= 'Z')) ||
+ 372               ((Char >= 'a') && (Char <= 'z')) ||
+ 373               ((Char >= '0') && (Char <= '9')) ||
+ 374               (Char=='+') || (Char=='-') || (Char=='#'))
+ 375               return(1);
+ 376            else return(0);
+ 377          }
+ 378          */
+ 379          
+ 380          
+ 381          bit cmd_validate_test(char *cmd_tab, int cmd_tab_size)
+ 382          {
+ 383   1          char cmd_offs;
+ 384   1      
+ 385   1          #define SEPARATOR    '@'
+ 386   1      
+ 387   1          // Node start
+ 388   1          #define TEST_NODE_ID      cmd_tab[cmd_offs]
+ 389   1      
+ 390   1          // Node index
+ 391   1          #define TEST_NODE_IX      cmd_tab[cmd_offs + 1]
+ 392   1      
+ 393   1          // Next node index
+ 394   1          #define TEST_NEXT_NODE    cmd_tab[cmd_offs + 2]
+ 395   1      
+ 396   1         
+ 397   1          cmd_offs = 0;
+ 398   1      
+ 399   1          while(1)
+ 400   1          {
+ 401   2              if(TEST_NODE_ID != SEPARATOR)           // pokud nesedi ID zacatku noveho prikazu
+ 402   2                  return(0);
+ 403   2      
+ 404   2              if((!TEST_NODE_IX) && (!TEST_NEXT_NODE))     // pokud nalezen konec tabulky prikazu
+ 405   2                  return(1);
+ 406   2      
+ 407   2              if(cmd_offs > cmd_tab_size)      // pokud prekrocen konec tabulky
+ 408   2                  return(0);
+ 409   2      
+ 410   2              cmd_offs += TEST_NEXT_NODE;           // jdi na dalsi prikaz
+ 411   2          }
+ 412   1      }
+ 413          
+ 414          
+ 415          void cmd_init()
+ 416          {
+ 417   1          cmd_offset = 0;
+ 418   1          cmd_ix = 0;
+ 419   1          cmd_save_par_flag = 0;
+ 420   1          cmd_space_skip = 0;
+C51 COMPILER V8.05a   CMD                                                                  11/16/2007 01:49:01 PAGE 8   
+
+ 421   1          cmd_new_command = 1;
+ 422   1      }
+ 423          
+ 424          
+ 425          
+ 426          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    965    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     16      22
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      3    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

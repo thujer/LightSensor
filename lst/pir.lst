@@ -1,0 +1,94 @@
+C51 COMPILER V8.05a   PIR                                                                  11/16/2007 01:49:01 PAGE 1   
+
+
+C51 COMPILER V8.05a, COMPILATION OF MODULE PIR
+OBJECT MODULE PLACED IN .\obj\pir.obj
+COMPILER INVOKED BY: H:\PrgJaz\Keil\C51\BIN\C51.EXE src\pir.c51 OMF2 BROWSE MODP2 INCDIR(.\src) DEBUG PRINT(.\lst\pir.ls
+                    -t) OBJECT(.\obj\pir.obj)
+
+line level    source
+
+   1          
+   2          #include "reg922.h"
+   3          #include "stdio.h"
+   4          #include "timers.h"
+   5          #include "event.h"
+   6          #include "event.def"
+   7          
+   8          #define  ALARM                0
+   9          #define  PIR_ALARM_DELAY   1000   // 1000 = 10sec
+  10          
+  11          
+  12          
+  13          sbit  pir_pin     = P1^7;
+  14          sbit  pir_pin_out = P1^6;
+  15          
+  16          bit   pir_pin_temp = 1;
+  17          
+  18          
+  19          void pir_proc()
+  20          {
+  21   1          if(!TIMER_PIR)                                   // pokud vyprsel timeout
+  22   1          {
+  23   2              if(pir_pin != pir_pin_temp)                  // pokud zmena na vstupu
+  24   2              {
+  25   3                  pir_pin_temp = pir_pin;                  // uloz novy stav pro porovnavani
+  26   3                  
+  27   3                  if(pir_pin == ALARM)                     // pokud je alarm na vstupu
+  28   3                  {
+  29   4                      TIMER_PIR = PIR_ALARM_DELAY;         // nastav timeout
+  30   4                      pir_pin_out = 0;                     // sepni vystup (open drain)
+  31   4                      event_send(EVENT_PIR_ALARM_ON);      // odesli udalost
+  32   4                  }
+  33   3                  else                                     // pokud je klid
+  34   3                  {
+  35   4                      pir_pin_out = 1;                     // vypni vystup (open drain)
+  36   4                      event_send(EVENT_PIR_ALARM_OFF);     // odesli udalost
+  37   4                  }
+  38   3              }
+  39   2          }
+  40   1          else
+  41   1          {
+  42   2              if(pir_pin == ALARM)                     // pokud je alarm na vstupu
+  43   2              {
+  44   3                  TIMER_PIR = PIR_ALARM_DELAY;         // nastav timeout
+  45   3              }        
+  46   2          }
+  47   1      }
+  48          
+  49          
+  50          
+  51          void pir_init()
+  52          {
+  53   1          // Set P1.2 as input only
+  54   1          P1M1 |= 4;
+C51 COMPILER V8.05a   PIR                                                                  11/16/2007 01:49:01 PAGE 2   
+
+  55   1          P1M2 &= ~4;
+  56   1      
+  57   1          // Set P1.6 as open drain
+  58   1          P1M1 |= 64;
+  59   1          P1M2 |= 64;
+  60   1      
+  61   1          TIMER_PIR = PIR_ALARM_DELAY;
+  62   1          pir_pin_temp = pir_pin;
+  63   1      }
+  64          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =     77    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      1    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

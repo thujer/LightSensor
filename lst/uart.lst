@@ -1,0 +1,311 @@
+C51 COMPILER V8.05a   UART                                                                 11/16/2007 01:49:01 PAGE 1   
+
+
+C51 COMPILER V8.05a, COMPILATION OF MODULE UART
+OBJECT MODULE PLACED IN .\obj\uart.obj
+COMPILER INVOKED BY: H:\PrgJaz\Keil\C51\BIN\C51.EXE src\uart.c51 OMF2 BROWSE MODP2 INCDIR(.\src) DEBUG PRINT(.\lst\uart.
+                    -lst) OBJECT(.\obj\uart.obj)
+
+line level    source
+
+   1          //-------------------------------------------------------------------------//
+   2          /////////////////////////////////////////////////////////////////////////////
+   3          // +---------------------------------------------------------------------+ //
+   4          // |                          UART - Serial Driver                       | //
+   5          // |                     ------------------------------                  | //
+   6          // |                       Verze 2.31Tiny Build 071111                   | //
+   7          // |                            MCU: 89LPC922                            | //
+   8          // |                                                                     | //
+   9          // |                         Copyright Tomas Hujer                       | //
+  10          // |                             (c) 2005-2007                           | //
+  11          // |                      thomas.hoodger(at)gmail.com                    | //
+  12          // |                                                                     | //
+  13          // +---------------------------------------------------------------------+ //
+  14          //  Driver for buffered, interrupt communication via RS232                 //
+  15          //  Here is 2 buffers - for receive and for send data. Index of each       //
+  16          //  buffer is rotating type. Each buffer have two indexs - first for       //
+  17          //  write to buffer, second for read from buffer.                          //
+  18          //                                                                         //
+  19          //  Interrupt routine write receive data to UART_RECBUF and increment      //
+  20          //  variable UART_RBIB, which mean the number of bytes in buffer and       //
+  21          //  status of char in buffer means too.                                    //
+  22          //  Sending process is directing by routine UART_PROC(). This routine is   //
+  23          //  called from main loop each or few cycle. Routine wait for count-down   //
+  24          //  variable UART_SDELAY, then read byte from UART_SNDBUF and write him    //
+  25          //  to SBUF.                                                               //
+  26          //                                                                         //
+  27          // ----------------------------------------------------------------------- //
+  28          //                                                                         //
+  29          //  Version history from 2.25:                                             //
+  30          //                                                                         //
+  31          //                       ----------------------------------------------    //
+  32          //        Version 2.27   Pridan status bUART_RB_Overflow - signalizuje     //
+  33          //                       preteceni prijimaciho bufferu, resetuje se        //
+  34          //                       v hlavni smycce.                                  //
+  35          //                       ----------------------------------------------    //
+  36          //        Version 2.28   UART_id.k prejmenovano na UART_drv.def            //
+  37          //                       definice velikosti bufferu presunty do            //
+  38          //                       UART_drv.def                                      //
+  39          //                       ----------------------------------------------    //
+  40          //        Version 2.29   Upraveno pro mensi hw naroky                      //
+  41          //                       ----------------------------------------------    //
+  42          //        Version 2.30   Osetren stav nahodneho prepsani indexu pro        //
+  43          //                       zapis a cteni. Indexy jsou pri kazdem dokonceni   //
+  44          //                       prijmu nebo vysilani resetovany.                  //
+  45          //                       ----------------------------------------------    //
+  46          //                                                                         //
+  47          // ----------------------------------------------------------------------- //
+  48          /////////////////////////////////////////////////////////////////////////////
+  49          
+  50          #include <reg922.H>
+  51          #include <stdarg.h> 
+  52          #include "uart.h"
+  53          
+  54          #define uchar unsigned char
+C51 COMPILER V8.05a   UART                                                                 11/16/2007 01:49:01 PAGE 2   
+
+  55          #define uint unsigned int
+  56          
+  57          /*-------------------------------------------------------------------------*/
+  58          uchar idata  UART_RECBUF[cRECBUFSIZE];
+  59          uchar        UART_RW_IX;
+  60          uchar        UART_RR_IX;
+  61          uchar        UART_RBIB;
+  62          uchar        uart_RByte;
+  63          
+  64          bit          uart_RIBUF;
+  65          bit          bUART_RB_Overflow;    // Flag preteceni prijimaciho bufferu
+  66          
+  67          
+  68          
+  69          // ============================================================== //
+  70          //                        Init serial UART                        //
+  71          // -------------------------------------------------------------- //
+  72          void uart_init()
+  73          {
+  74   1          uchar i;
+  75   1      
+  76   1          // clear SMOD0
+  77   1          PCON &= ~0x40;
+  78   1          SCON = 0x50;
+  79   1      
+  80   1          // set or clear SMOD1
+  81   1          PCON &= 0x7f;
+  82   1          PCON |= (0 << 8);
+  83   1          SSTAT = 0xA1;
+  84   1          
+  85   1          // enable break detect
+  86   1          AUXR1 |= 0x40;
+  87   1          
+  88   1          // configure baud rate generator
+  89   1          BRGCON = 0x00;
+  90   1          BRGR0 = 0xF0;
+  91   1          BRGR1 = 0x03;
+  92   1          BRGCON = 0x03;
+  93   1          
+  94   1          // TxD = push-pull
+  95   1          P1M1 &= ~0x01;
+  96   1          P1M2 |= 0x01;
+  97   1      
+  98   1          // RxD = input
+  99   1          //P1M1 |= 0x02;
+ 100   1          //P1M2 &= ~0x02;
+ 101   1      
+ 102   1          // RxD = quasi-bidirectional
+ 103   1          // pozn. pri RxD input je pri odpojeni kabelu vyvolano cyklicke preruseni z duvodu nuly na vstupu
+ 104   1          P1M1 &= ~0x02;
+ 105   1          P1M2 &= ~0x02;
+ 106   1          
+ 107   1          // set receive isr priority to level 2
+ 108   1          IP0 &= 0xEF;
+ 109   1          IP0H |= 0x10;
+ 110   1          //IP0H &= 0xEF;
+ 111   1      
+ 112   1          // enable uart receive interrupt
+ 113   1          ESR = 1;
+ 114   1      
+ 115   1          // set transmit isr priority to 0
+ 116   1          //IP1 &= 0xBF;
+C51 COMPILER V8.05a   UART                                                                 11/16/2007 01:49:01 PAGE 3   
+
+ 117   1          //IP1H &= 0xBF;
+ 118   1      
+ 119   1          // enable uart transmit interrupt
+ 120   1          //EST = 1;
+ 121   1      
+ 122   1      
+ 123   1          uart_RIBUF=0;
+ 124   1          UART_RW_IX=0;
+ 125   1          UART_RR_IX=0;
+ 126   1          UART_RBIB=0;
+ 127   1          uart_RByte=0;
+ 128   1          for(i=0; i<sizeof(UART_RECBUF); i++) UART_RECBUF[i]=0;
+ 129   1          bUART_RB_Overflow=0;
+ 130   1          
+ 131   1          //ES = 1;            // Povoleni preruseni od serialu
+ 132   1          //EA = 1;            // Povoleni vsech preruseni
+ 133   1      
+ 134   1          TI = 1;              // Start transmit
+ 135   1      }
+ 136          
+ 137          
+ 138          
+ 139          // ======================================================================= //
+ 140          //             Interrupt - Zapis prichoziho znaku do recbuf                //
+ 141          // ----------------------------------------------------------------------- //
+ 142          #pragma NOAREGS
+ 143          void uart_interrupt() interrupt 4 using 2
+ 144          {
+ 145   1          if(RI)                                      // Pokud prijaty znak
+ 146   1          {
+ 147   2              RI=0;                                   // Reset priznaku
+ 148   2      
+ 149   2              if(UART_RBIB < cRECBUFSIZE)             // Pokud neni RBUF plny
+ 150   2              {
+ 151   3                  //cPIN_SLED = ~cPIN_SLED;
+ 152   3                  
+ 153   3                  //RI=0;                                 // Reset priznaku
+ 154   3                  UART_RW_IX%=cRECBUFSIZE;              // Pretoc index, je-li na max.
+ 155   3                  UART_RECBUF[UART_RW_IX]=SBUF;         // Nacti znak z 232
+ 156   3                  UART_RW_IX++;                         // Posun index
+ 157   3                  UART_RBIB++;                          // Zvys pocet znaku v RBUF
+ 158   3              }
+ 159   2              else
+ 160   2              {
+ 161   3                  bUART_RB_Overflow=1;             // Nastav flag preteceni bufferu
+ 162   3              }
+ 163   2          }
+ 164   1      
+ 165   1          // check for framing error
+ 166   1          if (SSTAT & 0x08)
+ 167   1          {
+ 168   2              // clear interrupt flag
+ 169   2              SSTAT &= ~0x08;
+ 170   2          } // if
+ 171   1      
+ 172   1          // check for break detect
+ 173   1          if (SSTAT & 0x04)
+ 174   1          {
+ 175   2              // clear interrupt flag
+ 176   2              SSTAT &= ~0x04;
+ 177   2          } // if
+ 178   1      
+C51 COMPILER V8.05a   UART                                                                 11/16/2007 01:49:01 PAGE 4   
+
+ 179   1          // check for overrun
+ 180   1          if (SSTAT & 0x02)
+ 181   1          {
+ 182   2              // clear interrupt flag
+ 183   2              SSTAT &= ~0x02;
+ 184   2          } // if
+ 185   1      
+ 186   1      }
+ 187          #pragma AREGS
+ 188          
+ 189          
+ 190          // +-------------------------------------------------+
+ 191          // |             UART device output routine          |
+ 192          // +-------------------------------------------------+
+ 193          #define XON  0x11
+ 194          #define XOFF 0x13
+ 195          char UART(char c)
+ 196          {
+ 197   1          /* Body of Keil's putchar goes here */
+ 198   1      
+ 199   1          if (c == '\n')
+ 200   1          {
+ 201   2              if (RI)  
+ 202   2              {
+ 203   3                  if (SBUF == XOFF)
+ 204   3                  {
+ 205   4                      do
+ 206   4                      {
+ 207   5                          RI = 0;
+ 208   5                          while (!RI);
+ 209   5                      }
+ 210   4                      while (SBUF != XON);
+ 211   4                      RI = 0;
+ 212   4                  }
+ 213   3              }
+ 214   2                        
+ 215   2              while (TI == 0);
+ 216   2              TI = 0;
+ 217   2              SBUF = 0x0d;                         /* output CR  */
+ 218   2          } 
+ 219   1                      
+ 220   1          if (RI)  {
+ 221   2            if (SBUF == XOFF)  {
+ 222   3              do  {
+ 223   4                RI = 0;
+ 224   4                while (!RI);
+ 225   4              }
+ 226   3              while (SBUF != XON);
+ 227   3              RI = 0;
+ 228   3            }
+ 229   2          }
+ 230   1      
+ 231   1          while (TI == 0);
+ 232   1          TI = 0;
+ 233   1          SBUF = c;
+ 234   1      
+ 235   1          return(c);
+ 236   1      }
+ 237          
+ 238          
+ 239          
+ 240          // Vyzvednuti znaku z recbuf
+C51 COMPILER V8.05a   UART                                                                 11/16/2007 01:49:01 PAGE 5   
+
+ 241          void uart_proc()
+ 242          {
+ 243   1          if(UART_RBIB)                             // Pokud je v RBUF znak
+ 244   1          {
+ 245   2              // LED_Stay(cLED_RD_UART);            // Signalizace cteni z HW serialu
+ 246   2              uart_RIBUF=1;                         // Nastav flag znaku v RBUF
+ 247   2              UART_RR_IX %= cRECBUFSIZE;            // Pripadne pretoc index
+ 248   2              uart_RByte = UART_RECBUF[UART_RR_IX]; // Nacti znak z rbuf
+ 249   2              UART_RR_IX++;                         // Posun index
+ 250   2              UART_RBIB--;                          // Sniz pocet znaku v rbuf
+ 251   2          }
+ 252   1          else                                      // Pokud je buffer prazdny
+ 253   1          {
+ 254   2              if(uart_RIBUF)                        // a je nastaven flag znaku v bufferu
+ 255   2              {
+ 256   3                  uart_RIBUF=0;                     // Nuluj flag znaku v bufferu
+ 257   3                  UART_RR_IX=0;                     // Nuluj index pro cteni z prijimaciho bufferu
+ 258   3                  UART_RW_IX=0;                     // Nuluj index pro zapis do prijimaciho bufferu
+ 259   3              }
+ 260   2          }
+ 261   1      }
+ 262          
+ 263          
+ 264          void uart_disable()
+ 265          {
+ 266   1          ESR = 0;                                  // disable receive interrupt
+ 267   1      //    ES  = 0;                                  // disable serial interrupt
+ 268   1      }
+ 269          
+ 270          
+ 271          void uart_enable()
+ 272          {
+ 273   1          ESR = 1;                                  // enable receive interrupt
+ 274   1      }
+ 275          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    256    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      4    ----
+   IDATA SIZE       =      5    ----
+   BIT SIZE         =      2    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

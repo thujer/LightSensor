@@ -1,0 +1,79 @@
+
+#define UART_SUPPORT
+
+#include <reg922.h>
+#include <stdio.h>
+#include "iap.h"                   // In Application Programming
+#include "stdout.h"
+#include "uart.h"
+#include "pin.h"
+
+// ------------------------------------------------------------------------------------------------
+
+#define ISP_RECOVERY_LOOPS 30000
+
+sbit PIN_ISP_RECOVERY = P1^2;
+
+unsigned int isp_loop;
+
+
+// ------------------------------------------------------------------------------------------------
+
+void isp_recovery()
+{
+    EA=0;                              // Disable all interrupts
+
+    IAP_reset_boot_status();            
+    IAP_reset_boot_vector();
+
+    uart_init();
+
+    //while(~printf_ready);
+    //printf("\r\nISP mode accessed now.\r\n");
+    printf(".");
+    //printf_ready = 1;
+
+    while(1);
+}
+
+
+void isp_security_check()
+{
+    char test_loop;
+    char probability;
+
+    if(~PIN_ISP_RECOVERY)                         // pokud je pin nulovany
+    {
+        test_loop   = 100;                        // nastav pocet testovacich cyklu
+        probability = 0;                          // nuluj pravdepodobnost
+        while(test_loop)                          // smycka testu pravdepodobnosti nulovani pinu
+        {
+            test_loop--;                          // odecti cykl
+
+            if(~PIN_ISP_RECOVERY)                 // pokud je pin v tuto chvili nulovany
+                probability++;                    // pripocti pravdepodobnost
+        }        
+
+        if(probability > 90)                      // pokud je pravdepodobnost vetsi nez 90%
+            isp_recovery();                       // obnov ISP mod
+    }
+}
+
+
+void isp_security_loop()
+{
+    //P1M1 |= 128;             // set open drains on P1.7 pin
+    //P1M2 &= (255-128);       // set P1.7 as input only
+    pin_set(PORT_ID_P1, 2, PIN_TYPE_INPUT_ONLY);
+
+    isp_loop = ISP_RECOVERY_LOOPS;        // wait in loop for n cycles
+   
+    while(isp_loop)
+    {
+        isp_security_check();
+        isp_loop--;
+    }
+}
+
+
+

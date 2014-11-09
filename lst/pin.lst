@@ -1,0 +1,110 @@
+C51 COMPILER V8.05a   PIN                                                                  11/16/2007 01:49:02 PAGE 1   
+
+
+C51 COMPILER V8.05a, COMPILATION OF MODULE PIN
+OBJECT MODULE PLACED IN .\obj\pin.obj
+COMPILER INVOKED BY: H:\PrgJaz\Keil\C51\BIN\C51.EXE src\pin.c51 OMF2 BROWSE MODP2 INCDIR(.\src) DEBUG PRINT(.\lst\pin.ls
+                    -t) OBJECT(.\obj\pin.obj)
+
+line level    source
+
+   1          #include "reg922.h"
+   2          #include "pin.h"
+   3          
+   4          
+   5          
+   6          void pin_change(char port_id, char pin_id, char state)
+   7          {
+   8   1          char pin_mask;
+   9   1          char pin_state;
+  10   1      
+  11   1          pin_mask = (1 << pin_id);
+  12   1          pin_state = (state << pin_id);
+  13   1      
+  14   1          switch(port_id)
+  15   1          {
+  16   2              case PORT_ID_P0: 
+  17   2                      P0 = ((P0 & ~pin_mask) | pin_state); 
+  18   2                      break;
+  19   2      
+  20   2              case PORT_ID_P1: 
+  21   2                      P1 = ((P1 & ~pin_mask) | pin_state); 
+  22   2                      break;
+  23   2          }
+  24   1      }
+  25          
+  26          
+  27          
+  28          unsigned char pin_get_state(char port_id, char pin_id)
+  29          {
+  30   1          switch(port_id)
+  31   1          {
+  32   2              case PORT_ID_P0:  return((P0 & (1 << pin_id))?1:0);
+  33   2              case PORT_ID_P1:  return((P1 & (1 << pin_id))?1:0);
+  34   2          }
+  35   1      }
+  36          
+  37          
+  38          
+  39          void pin_set(char port_id, char pin_id, char pin_type)
+  40          {
+  41   1          char pin_mask;
+  42   1      
+  43   1          pin_mask = (1 << pin_id);
+  44   1      
+  45   1          switch(pin_type)
+  46   1          {
+  47   2              case PIN_TYPE_QUASI_BIDIRECTIONAL:
+  48   2                      switch(port_id)
+  49   2                      {
+  50   3                          case 0: P0M1 &= ~pin_mask;    P0M2 &= ~pin_mask;   break;
+  51   3                          case 1: P1M1 &= ~pin_mask;    P1M2 &= ~pin_mask;   break;
+  52   3                      }
+  53   2                      break;
+  54   2      
+C51 COMPILER V8.05a   PIN                                                                  11/16/2007 01:49:02 PAGE 2   
+
+  55   2              case PIN_TYPE_PUSH_PULL:
+  56   2                      switch(port_id)
+  57   2                      {
+  58   3                          case 0: P0M1 &= ~pin_mask;   P0M2 &= ~pin_mask;   break;
+  59   3                          case 1: P1M1 |= pin_mask;    P1M2 |= pin_mask;    break;
+  60   3                      }
+  61   2                      break;
+  62   2      
+  63   2              case PIN_TYPE_INPUT_ONLY:
+  64   2                      switch(port_id)
+  65   2                      {
+  66   3                          case 0: P0M1 |= pin_mask;    P0M2 |= pin_mask;    break;
+  67   3                          case 1: P1M1 &= ~pin_mask;   P1M2 &= ~pin_mask;   break;
+  68   3                      }
+  69   2                      break;
+  70   2      
+  71   2              case PIN_TYPE_OPEN_DRAIN:
+  72   2                      switch(port_id)
+  73   2                      {
+  74   3                          case 0: P0M1 |= pin_mask;    P0M2 |= pin_mask;   break;
+  75   3                          case 1: P1M1 |= pin_mask;    P1M2 |= pin_mask;   break;
+  76   3                      }
+  77   2                      break;
+  78   2          }
+  79   1      }
+  80          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    205    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
